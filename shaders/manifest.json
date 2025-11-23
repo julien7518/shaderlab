@@ -1,0 +1,19 @@
+{
+  "shaders": [
+    {
+      "file": "mouse.wgsl",
+      "name": "Mouse Interaction",
+      "description": "Interactive shader with mouse tracking and animated gradients"
+    },
+    {
+      "file": "raymarch_basic.wgsl",
+      "name": "Ray Marching - Basic",
+      "description": "Introduction to ray marching with simple primitives, CSG operations, and basic lighting"
+    },
+    {
+      "file": "raymarch_glass.wgsl",
+      "name": "Ray Marching - Glass & Metal",
+      "description": "Advanced ray marching with reflection, refraction, Fresnel effects, and multiple material types"
+    }
+  ]
+}
