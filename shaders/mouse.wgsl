@@ -21,6 +21,6 @@ fn fs_main(
 
   // Soft circle around mouse using smoothstep
   let dist = length(corrected_uv - corrected_mouse);
-  let mask = 1.0 - smoothstep(0.0, 0.05, dist);
+  let mask = 1.0 - smoothstep(0.0, 0.05 / uniforms.zoom, dist);
   return vec4<f32>(color * mask, 1.0);
 }

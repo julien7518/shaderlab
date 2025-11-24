@@ -43,6 +43,7 @@ let device;
 let context;
 let pipeline;
 let uniformBuffer;
+let sceneBuffer;
 let bindGroup;
 let startTime = performance.now();
 let lastFrameTime = startTime;
@@ -102,6 +103,69 @@ const uniforms = {
     update: (f) => f.toString(),
   },
 };
+const scene = {
+  sphere1: {
+    pos: [0.0, 0.0, -5.0],
+    radius: 1.0,
+    color: [1.0, 0.2, 0.2],
+  },
+};
+
+// Bind Scene Editor Panel (HTML-defined)
+function initScenePanel() {
+  const x = $("sphere-x");
+  const y = $("sphere-y");
+  const z = $("sphere-z");
+  const r = $("sphere-radius");
+  const c = $("sphere-color");
+
+  // Initialize values based on scene
+  x.value = scene.sphere1.pos[0];
+  y.value = scene.sphere1.pos[1];
+  z.value = scene.sphere1.pos[2];
+  r.value = scene.sphere1.radius;
+
+  c.value =
+    "#" +
+    (
+      (1 << 24) +
+      (Math.floor(scene.sphere1.color[0] * 255) << 16) +
+      (Math.floor(scene.sphere1.color[1] * 255) << 8) +
+      Math.floor(scene.sphere1.color[2] * 255)
+    )
+      .toString(16)
+      .slice(1);
+
+  const updateScene = () => {
+    scene.sphere1.pos[0] = parseFloat(x.value);
+    scene.sphere1.pos[1] = parseFloat(y.value);
+    scene.sphere1.pos[2] = parseFloat(z.value);
+    scene.sphere1.radius = parseFloat(r.value);
+
+    const hex = c.value;
+    scene.sphere1.color = [
+      parseInt(hex.slice(1, 3), 16) / 255,
+      parseInt(hex.slice(3, 5), 16) / 255,
+      parseInt(hex.slice(5, 7), 16) / 255,
+    ];
+  };
+
+  [x, y, z, r, c].forEach((el) => el.addEventListener("input", updateScene));
+
+  // Toggle behavior
+  const panel = $("scene-panel");
+  const toggle = $("scene-panel-toggle");
+
+  toggle.onclick = () => {
+    if (panel.style.height === "0px" || panel.style.height === "0") {
+      panel.style.height = panel.scrollHeight + "px";
+    } else {
+      panel.style.height = "0";
+    }
+  };
+}
+
+initScenePanel();
 
 $("uniforms-table").innerHTML = Object.entries(uniforms)
   .map(
@@ -128,18 +192,13 @@ canvas.addEventListener("mouseleave", () => (mouseDown = false));
 window.addEventListener(
   "wheel",
   (e) => {
-    // Trackpad pinch on Mac triggers wheel with ctrlKey === true.
-    // Prevent the browser's default zoom behavior and update our `zoom` variable.
     if (e.ctrlKey) {
       e.preventDefault();
       const zoomSpeed = 0.01; // tweak to taste
       zoom += e.deltaY * zoomSpeed;
 
-      // Clamp to avoid inversion and extreme values
-      zoom = Math.max(0.2, Math.min(5.0, zoom));
+      zoom = Math.max(0.1, Math.min(10.0, zoom));
 
-      // We don't write the uniform buffer here — render() will write the latest zoom next frame.
-      // Update the UI immediately so the panel reflects the change.
       $("u-zoom").textContent = uniforms.zoom.update(zoom);
     }
   },
@@ -163,8 +222,21 @@ fn vs_main(@builtin(vertex_index) vertexIndex: u32) -> @builtin(position) vec4<f
 const uniformsStruct = `struct Uniforms {
   resolution: vec2<f32>, time: f32, deltaTime: f32, mouse: vec4<f32>, zoom: f32, frame: u32,
   _padding: u32, _padding2: u32, _padding3: u32,
-}
-@group(0) @binding(0) var<uniform> uniforms: Uniforms;`;
+};
+
+struct Sphere {
+  pos: vec3<f32>,   // 3*4 = 12
+  radius: f32,      // 12+4 = 16
+  color: vec3<f32>, // 16+(3*4) = 28
+  _last_bytes: f32   // 28+4 = 32
+};
+
+struct Scene {
+  sphere1: Sphere
+};
+
+@group(0) @binding(0) var<uniform> uniforms: Uniforms;
+@group(0) @binding(1) var<uniform> scene: Scene;`;
 
 async function initWebGPU() {
   if (!navigator.gpu)
@@ -177,6 +249,10 @@ async function initWebGPU() {
   context.configure({ device, format });
   uniformBuffer = device.createBuffer({
     size: 64,
+    usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+  });
+  sceneBuffer = device.createBuffer({
+    size: 32,
     usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
   });
   await compileShader(fallbackShader);
@@ -214,6 +290,11 @@ async function compileShader(fragmentCode) {
           visibility: GPUShaderStage.FRAGMENT,
           buffer: { type: "uniform" },
         },
+        {
+          binding: 1,
+          visibility: GPUShaderStage.FRAGMENT,
+          buffer: { type: "uniform" },
+        },
       ],
     });
     pipeline = device.createRenderPipeline({
@@ -230,7 +311,10 @@ async function compileShader(fragmentCode) {
     });
     bindGroup = device.createBindGroup({
       layout: bindGroupLayout,
-      entries: [{ binding: 0, resource: { buffer: uniformBuffer } }],
+      entries: [
+        { binding: 0, resource: { buffer: uniformBuffer } },
+        { binding: 1, resource: { buffer: sceneBuffer } },
+      ],
     });
     $("compile-time").textContent = `${(performance.now() - start).toFixed(2)}ms`; // prettier-ignore
   } catch (e) {
@@ -244,8 +328,20 @@ function render() {
   const currentTime = performance.now();
   const deltaTime = (currentTime - lastFrameTime) / 1000;
   const elapsedTime = (currentTime - startTime) / 1000;
-  const data = [canvas.width, canvas.height, elapsedTime, deltaTime, mouseX, mouseY, mouseDown ? 1 : 0, 0,zoom, frameCount, 0, 0, 0]; // prettier-ignore
-  device.queue.writeBuffer(uniformBuffer, 0, new Float32Array(data));
+  const uniformData = [canvas.width, canvas.height, elapsedTime, deltaTime, mouseX, mouseY, mouseDown ? 1 : 0, 0, zoom, frameCount, 0, 0, 0]; // prettier-ignore
+  const sceneData = [
+    scene.sphere1.pos[0],
+    scene.sphere1.pos[1],
+    scene.sphere1.pos[2],
+    scene.sphere1.radius,
+
+    scene.sphere1.color[0],
+    scene.sphere1.color[1],
+    scene.sphere1.color[2],
+    0.0,
+  ];
+  device.queue.writeBuffer(uniformBuffer, 0, new Float32Array(uniformData));
+  device.queue.writeBuffer(sceneBuffer, 0, new Float32Array(sceneData));
 
   const val = uniforms.resolution.update(canvas.width, canvas.height);
   if (val) $("u-resolution").textContent = val;
@@ -253,7 +349,6 @@ function render() {
   $("u-deltaTime").textContent = uniforms.deltaTime.update(deltaTime);
   $("u-mousexy").textContent = uniforms.mousexy.update(mouseX, mouseY);
   $("u-mousez").textContent = uniforms.mousez.update(mouseDown);
-  $("u-zoom").textContent = uniforms.zoom.update(zoom);
   $("u-frame").textContent = uniforms.frame.update(frameCount);
 
   lastFrameTime = currentTime;

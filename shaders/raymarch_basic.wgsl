@@ -76,7 +76,6 @@ const MAT_TORUS: f32 = 3;
 // Material Colors
 const MAT_SKY_COLOR: vec3<f32> = vec3<f32>(0.7, 0.8, 0.9);
 const MAT_PLANE_COLOR: vec3<f32> = vec3<f32>(0.8, 0.8, 0.8);
-const MAT_SPHERE_COLOR: vec3<f32> = vec3<f32>(1.0, 0.3, 0.3);
 const MAT_BOX_COLOR: vec3<f32> = vec3<f32>(0.3, 1.0, 0.3);
 const MAT_TORUS_COLOR: vec3<f32> = vec3<f32>(0.3, 0.3, 1.0);
 
@@ -87,7 +86,11 @@ fn get_material_color(mat_id: f32, p: vec3<f32>) -> vec3<f32> {
     let col2 = vec3<f32>(0.2, 0.2, 0.2);
     return select(col2, col1, i32(checker) % 2 == 0);
   } else if mat_id == MAT_SPHERE {
-    return MAT_SPHERE_COLOR;
+    return vec3<f32>(
+        scene.sphere1.color[0],
+        scene.sphere1.color[1],
+        scene.sphere1.color[2]
+    );
   } else if mat_id == MAT_BOX {
     return MAT_BOX_COLOR;
   } else if mat_id == MAT_TORUS {
@@ -133,6 +136,10 @@ fn op_smooth_union(d1: f32, d2: f32, k: f32) -> f32 {
   return mix(d2, d1, h) - k * h * (1.0 - h);
 }
 
+fn op_xor(d1: f32, d2: f32) -> f32 {
+  return max(min(d1,d2),-max(d1,d2));
+}
+
 // Scene description - returns (distance, material_id)
 fn get_dist(p: vec3<f32>) -> vec2<f32> {
   let time = uniforms.time;
@@ -145,8 +152,9 @@ fn get_dist(p: vec3<f32>) -> vec2<f32> {
   }
 
   // Animated sphere
-  let sphere_pos = vec3<f32>(sin(time) * 1.5, 0.0, 0.0);
-  let sphere_dist = sd_sphere(p - sphere_pos, 0.5);
+  let sphere_pos = scene.sphere1.pos;
+  let sphere_rad = scene.sphere1.radius;
+  let sphere_dist = sd_sphere(p - sphere_pos, sphere_rad);
 
   // Rotating box
   var box_p = p - vec3<f32>(0.0, 0.0, 0.0);
