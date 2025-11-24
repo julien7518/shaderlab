@@ -105,9 +105,14 @@ const uniforms = {
 };
 const scene = {
   sphere1: {
-    pos: [0.0, 0.0, -5.0],
+    pos: [0.0, 0.0, -1.0],
     radius: 1.0,
     color: [1.0, 0.2, 0.2],
+  },
+  cube1: {
+    pos: [0.0, 0.0, 0.0],
+    size: 1.0,
+    color: [0.2, 1.0, 0.2],
   },
 };
 
@@ -118,14 +123,34 @@ function initScenePanel() {
   const z = $("sphere-z");
   const r = $("sphere-radius");
   const c = $("sphere-color");
+  const cx = $("cube-x");
+  const cy = $("cube-y");
+  const cz = $("cube-z");
+  const cr = $("cube-size");
+  const cc = $("cube-color");
 
   // Initialize values based on scene
   x.value = scene.sphere1.pos[0];
   y.value = scene.sphere1.pos[1];
   z.value = scene.sphere1.pos[2];
   r.value = scene.sphere1.radius;
+  cx.value = scene.cube1.pos[0];
+  cy.value = scene.cube1.pos[1];
+  cz.value = scene.cube1.pos[2];
+  cr.value = scene.cube1.size;
 
   c.value =
+    "#" +
+    (
+      (1 << 24) +
+      (Math.floor(scene.sphere1.color[0] * 255) << 16) +
+      (Math.floor(scene.sphere1.color[1] * 255) << 8) +
+      Math.floor(scene.sphere1.color[2] * 255)
+    )
+      .toString(16)
+      .slice(1);
+
+  cc.value =
     "#" +
     (
       (1 << 24) +
@@ -141,6 +166,10 @@ function initScenePanel() {
     scene.sphere1.pos[1] = parseFloat(y.value);
     scene.sphere1.pos[2] = parseFloat(z.value);
     scene.sphere1.radius = parseFloat(r.value);
+    scene.cube1.pos[0] = parseFloat(cx.value);
+    scene.cube1.pos[1] = parseFloat(cy.value);
+    scene.cube1.pos[2] = parseFloat(cz.value);
+    scene.cube1.size = parseFloat(cr.value);
 
     const hex = c.value;
     scene.sphere1.color = [
@@ -148,9 +177,18 @@ function initScenePanel() {
       parseInt(hex.slice(3, 5), 16) / 255,
       parseInt(hex.slice(5, 7), 16) / 255,
     ];
+
+    const chex = cc.value;
+    scene.cube1.color = [
+      parseInt(chex.slice(1, 3), 16) / 255,
+      parseInt(chex.slice(3, 5), 16) / 255,
+      parseInt(chex.slice(5, 7), 16) / 255,
+    ];
   };
 
-  [x, y, z, r, c].forEach((el) => el.addEventListener("input", updateScene));
+  [x, y, z, r, c, cx, cy, cz, cr, cc].forEach((el) =>
+    el.addEventListener("input", updateScene)
+  );
 
   // Toggle behavior
   const panel = $("scene-panel");
@@ -220,19 +258,34 @@ fn vs_main(@builtin(vertex_index) vertexIndex: u32) -> @builtin(position) vec4<f
 }`;
 
 const uniformsStruct = `struct Uniforms {
-  resolution: vec2<f32>, time: f32, deltaTime: f32, mouse: vec4<f32>, zoom: f32, frame: u32,
-  _padding: u32, _padding2: u32, _padding3: u32,
+  resolution: vec2<f32>,
+  time: f32,
+  deltaTime: f32,
+  mouse: vec4<f32>,
+  zoom: f32,
+  frame: u32,
+  _padding: u32,
+  _padding2: u32,
+  _padding3: u32,
 };
 
 struct Sphere {
   pos: vec3<f32>,   // 3*4 = 12
   radius: f32,      // 12+4 = 16
   color: vec3<f32>, // 16+(3*4) = 28
-  _last_bytes: f32   // 28+4 = 32
+  _padding: u32     // 28+4 = 32
+};
+
+struct Cube {
+  pos: vec3<f32>,
+  size: f32,
+  color: vec3<f32>,
+  _padding: u32
 };
 
 struct Scene {
-  sphere1: Sphere
+  sphere1: Sphere,
+  cube1: Cube
 };
 
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
@@ -252,7 +305,7 @@ async function initWebGPU() {
     usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
   });
   sceneBuffer = device.createBuffer({
-    size: 32,
+    size: 64,
     usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
   });
   await compileShader(fallbackShader);
@@ -338,6 +391,16 @@ function render() {
     scene.sphere1.color[0],
     scene.sphere1.color[1],
     scene.sphere1.color[2],
+    0.0,
+
+    scene.cube1.pos[0],
+    scene.cube1.pos[1],
+    scene.cube1.pos[2],
+    scene.cube1.size,
+
+    scene.cube1.color[0],
+    scene.cube1.color[1],
+    scene.cube1.color[2],
     0.0,
   ];
   device.queue.writeBuffer(uniformBuffer, 0, new Float32Array(uniformData));

@@ -87,12 +87,16 @@ fn get_material_color(mat_id: f32, p: vec3<f32>) -> vec3<f32> {
     return select(col2, col1, i32(checker) % 2 == 0);
   } else if mat_id == MAT_SPHERE {
     return vec3<f32>(
-        scene.sphere1.color[0],
-        scene.sphere1.color[1],
-        scene.sphere1.color[2]
+      scene.sphere1.color[0],
+      scene.sphere1.color[1],
+      scene.sphere1.color[2]
     );
   } else if mat_id == MAT_BOX {
-    return MAT_BOX_COLOR;
+    return vec3<f32>(
+      scene.cube1.color[0],
+      scene.cube1.color[1],
+      scene.cube1.color[2]
+    );
   } else if mat_id == MAT_TORUS {
     return MAT_TORUS_COLOR;
   }
@@ -157,11 +161,11 @@ fn get_dist(p: vec3<f32>) -> vec2<f32> {
   let sphere_dist = sd_sphere(p - sphere_pos, sphere_rad);
 
   // Rotating box
-  var box_p = p - vec3<f32>(0.0, 0.0, 0.0);
+  var box_p = p - scene.cube1.pos;
   let rot_y = mat2x2f(cos(time), -sin(time), sin(time), cos(time));
   let rotated_xz = rot_y * vec2<f32>(box_p.x, box_p.z);
   box_p = vec3<f32>(rotated_xz.x, box_p.y, rotated_xz.y);
-  let box_dist = sd_box(box_p, vec3<f32>(0.3, 0.4, 0.3));
+  let box_dist = sd_box(box_p, vec3<f32>(scene.cube1.size, scene.cube1.size, scene.cube1.size));
 
   // Smooth union the sphere and box
   let smooth_blend = 0.4; // Adjust for desired blend amount
