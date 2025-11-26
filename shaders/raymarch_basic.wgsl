@@ -5,7 +5,7 @@ fn fs_main(@builtin(position) fragCoord: vec4<f32>) -> @location(0) vec4<f32> {
 
   // Orbital Controll
   let pitch = clamp((uniforms.mouse.y / uniforms.resolution.y), 0.05, 1.5);
-  let yaw = uniforms.time * 0.5; // Auto-orbits around the center
+  let yaw = uniforms.time * uniforms.auto_rotate * 0.5; // Auto-orbits around the center
 
   // Camera Coords
   let cam_dist = 4.0 * uniforms.zoom; // Distance from the target
@@ -122,6 +122,55 @@ fn sd_plane(p: vec3<f32>, n: vec3<f32>, h: f32) -> f32 {
   return dot(p, n) + h;
 }
 
+fn sd_cone(p: vec3<f32>, c: vec2<f32>, h: f32) -> f32 {
+  var pos = p;
+  let q = h * vec2<f32>(c.x / c.y, -1.0);
+  let w = vec2<f32>(length(vec2<f32>(pos.x, pos.z)), pos.y);
+
+  let dot_wq = dot(w, q);
+  let dot_qq = dot(q, q);
+
+  let a = w - q * clamp(dot_wq / dot_qq, 0.0, 1.0);
+  let b = w - q * vec2<f32>(clamp(w.x / q.x, 0.0, 1.0), 1.0);
+  let k = sign(q.y);
+  let d = min(dot(a, a), dot(b, b));
+  let s = max(k * (w.x * q.y - w.y * q.x), k * (w.y - q.y));
+
+  return sqrt(d) * sign(s);
+}
+
+fn sd_pyramid(p: vec3<f32>, h: f32) -> f32 {
+  var pos = p;
+  let m2 = h*h + 0.25;
+
+  var px = abs(pos.x);
+  var pz = abs(pos.z);
+
+  if (pz > px) {
+      let tmp = px;
+      px = pz;
+      pz = tmp;
+  }
+
+  px = px - 0.5;
+  pz = pz - 0.5;
+
+  pos = vec3<f32>(px, pos.y, pz);
+
+  let q = vec3<f32>(pos.z, h*pos.y - 0.5*pos.x, h*pos.x + 0.5*pos.y);
+  let s = max(-q.x, 0.0);
+  let t = clamp((q.y - 0.5*p.z) / (m2 + 0.25), 0.0, 1.0);
+  let a = m2 * (q.x + s)*(q.x + s) + q.y*q.y;
+  let b = m2 * (q.x + 0.5*t)*(q.x + 0.5*t) + (q.y - m2*t)*(q.y - m2*t);
+  var d2 = 0.0;
+
+  if (min(q.y, -q.x*m2 - q.y*0.5) <= 0.0) {
+      d2 = min(a, b);
+  }
+
+  return sqrt((d2 + q.z*q.z) / m2) * sign(max(q.z, -p.y));
+}
+
 // SDF Operations
 fn op_union(d1: f32, d2: f32) -> f32 {
   return min(d1, d2);
@@ -140,8 +189,16 @@ fn op_smooth_union(d1: f32, d2: f32, k: f32) -> f32 {
   return mix(d2, d1, h) - k * h * (1.0 - h);
 }
 
+fn op_smooth_subtract(d1: f32, d2: f32, k: f32) -> f32 {
+  return -op_smooth_union(d1,-d2,k);
+}
+
 fn op_xor(d1: f32, d2: f32) -> f32 {
   return max(min(d1,d2),-max(d1,d2));
+}
+
+fn op_round(dist: f32, rad: f32) -> f32 {
+  return dist - rad;
 }
 
 // Scene description - returns (distance, material_id)

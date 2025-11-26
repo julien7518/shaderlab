@@ -105,13 +105,13 @@ const uniforms = {
 };
 const scene = {
   sphere1: {
-    pos: [0.0, 0.0, -1.0],
-    radius: 1.0,
+    pos: [0.0, 0.0, -1.6],
+    radius: 0.8,
     color: [1.0, 0.2, 0.2],
   },
   cube1: {
     pos: [0.0, 0.0, 0.0],
-    size: 1.0,
+    size: 0.5,
     color: [0.2, 1.0, 0.2],
   },
 };
@@ -264,7 +264,7 @@ const uniformsStruct = `struct Uniforms {
   mouse: vec4<f32>,
   zoom: f32,
   frame: u32,
-  _padding: u32,
+  auto_rotate: f32,
   _padding2: u32,
   _padding3: u32,
 };
