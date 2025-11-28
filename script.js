@@ -53,6 +53,9 @@ let mouseX = 0;
 let mouseY = 0;
 let mouseDown = false;
 let zoom = 1.0;
+let auto_rotate = 0;
+let fog_ratio = 0.02;
+let gamma_correct_ratio = 2.2;
 let isPanelOpen = true;
 let isFullscreen = false;
 
@@ -60,12 +63,12 @@ const $ = (id) => document.getElementById(id);
 const canvas = $("canvas");
 const errorMsg = $("error-message");
 const compileBtn = $("compile-btn");
+const autoRotateBtn = $("auto-rotate-btn");
 const fullscreenBtn = $("fullscreen-btn");
 const fullscreenEnterIcon = $("fullscreen-enter-icon");
 const fullscreenExitIcon = $("fullscreen-exit-icon");
 const canvasContainer = $("canvas-container");
 const editorContainer = $("editor-container");
-const shaderSelector = $("shader-selector");
 const uniforms = {
   resolution: {
     label: "resolution",
@@ -97,6 +100,21 @@ const uniforms = {
     initial: "1.0",
     update: (zoom) => `${Math.round(zoom * 100) / 100}`,
   },
+  auto_rotate: {
+    label: "auto rotation",
+    initial: "0",
+    update: (auto_rotate) => `${auto_rotate}`,
+  },
+  fog_ratio: {
+    label: "fog",
+    initial: "0.02",
+    update: (fog_ratio) => `${fog_ratio}`,
+  },
+  gamma_correct_ratio: {
+    label: "gamma",
+    initial: "2.2",
+    update: (gamma_correct_ratio) => `${gamma_correct_ratio}`,
+  },
   frame: {
     label: "frame",
     initial: "0",
@@ -115,95 +133,6 @@ const scene = {
     color: [0.2, 1.0, 0.2],
   },
 };
-
-// Bind Scene Editor Panel (HTML-defined)
-function initScenePanel() {
-  const x = $("sphere-x");
-  const y = $("sphere-y");
-  const z = $("sphere-z");
-  const r = $("sphere-radius");
-  const c = $("sphere-color");
-  const cx = $("cube-x");
-  const cy = $("cube-y");
-  const cz = $("cube-z");
-  const cr = $("cube-size");
-  const cc = $("cube-color");
-
-  // Initialize values based on scene
-  x.value = scene.sphere1.pos[0];
-  y.value = scene.sphere1.pos[1];
-  z.value = scene.sphere1.pos[2];
-  r.value = scene.sphere1.radius;
-  cx.value = scene.cube1.pos[0];
-  cy.value = scene.cube1.pos[1];
-  cz.value = scene.cube1.pos[2];
-  cr.value = scene.cube1.size;
-
-  c.value =
-    "#" +
-    (
-      (1 << 24) +
-      (Math.floor(scene.sphere1.color[0] * 255) << 16) +
-      (Math.floor(scene.sphere1.color[1] * 255) << 8) +
-      Math.floor(scene.sphere1.color[2] * 255)
-    )
-      .toString(16)
-      .slice(1);
-
-  cc.value =
-    "#" +
-    (
-      (1 << 24) +
-      (Math.floor(scene.sphere1.color[0] * 255) << 16) +
-      (Math.floor(scene.sphere1.color[1] * 255) << 8) +
-      Math.floor(scene.sphere1.color[2] * 255)
-    )
-      .toString(16)
-      .slice(1);
-
-  const updateScene = () => {
-    scene.sphere1.pos[0] = parseFloat(x.value);
-    scene.sphere1.pos[1] = parseFloat(y.value);
-    scene.sphere1.pos[2] = parseFloat(z.value);
-    scene.sphere1.radius = parseFloat(r.value);
-    scene.cube1.pos[0] = parseFloat(cx.value);
-    scene.cube1.pos[1] = parseFloat(cy.value);
-    scene.cube1.pos[2] = parseFloat(cz.value);
-    scene.cube1.size = parseFloat(cr.value);
-
-    const hex = c.value;
-    scene.sphere1.color = [
-      parseInt(hex.slice(1, 3), 16) / 255,
-      parseInt(hex.slice(3, 5), 16) / 255,
-      parseInt(hex.slice(5, 7), 16) / 255,
-    ];
-
-    const chex = cc.value;
-    scene.cube1.color = [
-      parseInt(chex.slice(1, 3), 16) / 255,
-      parseInt(chex.slice(3, 5), 16) / 255,
-      parseInt(chex.slice(5, 7), 16) / 255,
-    ];
-  };
-
-  [x, y, z, r, c, cx, cy, cz, cr, cc].forEach((el) =>
-    el.addEventListener("input", updateScene)
-  );
-
-  // Toggle behavior
-  const panel = $("scene-panel");
-  const toggle = $("scene-panel-toggle");
-
-  toggle.onclick = () => {
-    if (panel.style.height === "0px" || panel.style.height === "0") {
-      panel.style.height = panel.scrollHeight + "px";
-    } else {
-      panel.style.height = "0";
-    }
-  };
-}
-
-initScenePanel();
 
 $("uniforms-table").innerHTML = Object.entries(uniforms)
   .map(
@@ -265,22 +194,22 @@ const uniformsStruct = `struct Uniforms {
   zoom: f32,
   frame: u32,
   auto_rotate: f32,
-  _padding2: u32,
-  _padding3: u32,
+  fog_ratio: f32,
+  gamma_correct_ratio: f32,
 };
 
 struct Sphere {
   pos: vec3<f32>,   // 3*4 = 12
   radius: f32,      // 12+4 = 16
   color: vec3<f32>, // 16+(3*4) = 28
-  _padding: u32     // 28+4 = 32
+  rotation_x: f32     // 28+4 = 32
 };
 
 struct Cube {
   pos: vec3<f32>,
   size: f32,
   color: vec3<f32>,
-  _padding: u32
+  rotation_x: f32
 };
 
 struct Scene {
@@ -290,6 +219,18 @@ struct Scene {
 
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
 @group(0) @binding(1) var<uniform> scene: Scene;`;
+
+autoRotateBtn.onclick = () => {
+  auto_rotate = auto_rotate === 1 ? 0 : 1;
+};
+const fogSlider = document.getElementById("fog-slider");
+const gammaSlider = document.getElementById("gamma-slider");
+fogSlider.addEventListener("input", (e) => {
+  fog_ratio = parseFloat(e.target.value);
+});
+gammaSlider.addEventListener("input", (e) => {
+  gamma_correct_ratio = parseFloat(e.target.value);
+});
 
 async function initWebGPU() {
   if (!navigator.gpu)
@@ -381,7 +322,7 @@ function render() {
   const currentTime = performance.now();
   const deltaTime = (currentTime - lastFrameTime) / 1000;
   const elapsedTime = (currentTime - startTime) / 1000;
-  const uniformData = [canvas.width, canvas.height, elapsedTime, deltaTime, mouseX, mouseY, mouseDown ? 1 : 0, 0, zoom, frameCount, 0, 0, 0]; // prettier-ignore
+  const uniformData = [canvas.width, canvas.height, elapsedTime, deltaTime, mouseX, mouseY, mouseDown ? 1 : 0, 0, zoom, frameCount, auto_rotate, fog_ratio, gamma_correct_ratio]; // prettier-ignore
   const sceneData = [
     scene.sphere1.pos[0],
     scene.sphere1.pos[1],
@@ -413,6 +354,10 @@ function render() {
   $("u-mousexy").textContent = uniforms.mousexy.update(mouseX, mouseY);
   $("u-mousez").textContent = uniforms.mousez.update(mouseDown);
   $("u-frame").textContent = uniforms.frame.update(frameCount);
+  $("u-auto_rotate").textContent = uniforms.auto_rotate.update(auto_rotate);
+  $("u-fog_ratio").textContent = uniforms.fog_ratio.update(fog_ratio);
+  $("u-gamma_correct_ratio").textContent =
+    uniforms.gamma_correct_ratio.update(gamma_correct_ratio);
 
   lastFrameTime = currentTime;
 
@@ -529,88 +474,27 @@ document.addEventListener("keydown", (e) => {
 });
 window.addEventListener("resize", resizeCanvas);
 
-// Handle shader selection
-shaderSelector.addEventListener("change", (e) => {
-  const selectedShader = e.target.value;
-  if (selectedShader && shaders[selectedShader]) {
-    editor.setValue(shaders[selectedShader].content);
-    compileShader(shaders[selectedShader].content);
-  }
-});
-
-// Load shaders from files
-async function loadShaders() {
-  let loadedCount = 0;
-  let manifest = null;
-
-  // Try to load the manifest file
+async function loadBasicShader() {
   try {
-    const manifestResponse = await fetch("./shaders/manifest.json");
-    if (manifestResponse.ok) {
-      manifest = await manifestResponse.json();
-      console.log("Loaded shader manifest");
+    const response = await fetch("./shaders/raymarch_basic.wgsl");
+    if (response.ok) {
+      fallbackShader = await response.text();
+      editor.setValue(fallbackShader);
+    } else {
+      console.warn(
+        "raymarch_basic.wgsl not found, using built-in fallback shader"
+      );
     }
   } catch (err) {
-    console.log("No manifest found, will try loading mouse.wgsl directly");
-  }
-
-  // If we have a manifest, use it. Otherwise, try loading mouse.wgsl
-  const shaderList = manifest?.shaders || [
-    { file: "mouse.wgsl", name: "Mouse Interaction" },
-  ];
-
-  // Load each shader file
-  for (const shaderInfo of shaderList) {
-    try {
-      const response = await fetch(`./shaders/${shaderInfo.file}`);
-      if (response.ok) {
-        const content = await response.text();
-        shaders[shaderInfo.file] = {
-          content: content,
-          name: shaderInfo.name || shaderInfo.file.replace(".wgsl", ""),
-          description: shaderInfo.description || "",
-        };
-        loadedCount++;
-        console.log(`Loaded shader: ${shaderInfo.file}`);
-      }
-    } catch (err) {
-      console.error(`Failed to load shader ${shaderInfo.file}:`, err);
-    }
-  }
-
-  // Populate shader selector after loading
-  if (loadedCount > 0) {
-    // Clear existing options except the first one
-    while (shaderSelector.options.length > 1) {
-      shaderSelector.remove(1);
-    }
-
-    // Add loaded shaders to selector
-    Object.keys(shaders).forEach((filename) => {
-      const option = document.createElement("option");
-      option.value = filename;
-      option.textContent = shaders[filename].name;
-      if (shaders[filename].description) {
-        option.title = shaders[filename].description;
-      }
-      shaderSelector.appendChild(option);
-    });
-
-    // Set first shader as default
-    const firstShader = Object.keys(shaders)[0];
-    if (firstShader) {
-      fallbackShader = shaders[firstShader].content;
-      editor.setValue(fallbackShader);
-      shaderSelector.value = firstShader;
-    }
-  } else {
-    console.log("No shaders loaded, using fallback");
+    console.warn(
+      "Error loading raymarch_basic.wgsl, using fallback shader",
+      err
+    );
   }
 }
 
-// Main initialization
 const main = async () => {
-  await loadShaders();
+  await loadBasicShader();
   resizeCanvas();
   if (await initWebGPU()) render();
 };

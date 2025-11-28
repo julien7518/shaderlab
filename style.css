@@ -69,6 +69,9 @@
   overflow-y: auto !important;
   overflow-x: auto !important;
 }
+.CodeMirror-wrap {
+  overflow: hidden;
+}
 /* Editor container should fill available space */
 #code-editor-container {
   height: 100%;

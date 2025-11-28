@@ -5,7 +5,7 @@ fn fs_main(@builtin(position) fragCoord: vec4<f32>) -> @location(0) vec4<f32> {
 
   // Orbital Controll
   let pitch = clamp((uniforms.mouse.y / uniforms.resolution.y), 0.05, 1.5);
-  let yaw = uniforms.time * uniforms.auto_rotate * 0.5; // Auto-orbits around the center
+  let yaw = uniforms.time * uniforms.auto_rotate * 0.5;
 
   // Camera Coords
   let cam_dist = 4.0 * uniforms.zoom; // Distance from the target
@@ -46,7 +46,7 @@ fn fs_main(@builtin(position) fragCoord: vec4<f32>) -> @location(0) vec4<f32> {
     let phong = albedo * (ambient + diffuse * shadow * 0.8);
 
     // Exponential Fog
-    let fog = exp(-result.x * 0.02);
+    let fog = exp(-result.x * uniforms.fog_ratio);
     let color = mix(MAT_SKY_COLOR, phong, fog);
 
     return vec4<f32>(gamma_correct(color), 1.0);
@@ -59,7 +59,7 @@ fn fs_main(@builtin(position) fragCoord: vec4<f32>) -> @location(0) vec4<f32> {
 
 // Gamma Correction
 fn gamma_correct(color: vec3<f32>) -> vec3<f32> {
-  return pow(color, vec3<f32>(1.0 / 2.2));
+  return pow(color, vec3<f32>(1.0 / uniforms.gamma_correct_ratio));
 }
 
 // Constants
