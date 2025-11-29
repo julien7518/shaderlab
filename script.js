@@ -52,7 +52,7 @@ let lastFpsUpdate = startTime;
 let mouseX = 0;
 let mouseY = 0;
 let mouseDown = false;
-let zoom = 1.0;
+let zoom = 1.5;
 let auto_rotate = 0;
 let fog_ratio = 0.02;
 let gamma_correct_ratio = 2.2;
@@ -100,7 +100,7 @@ const uniforms = {
   },
   zoom: {
     label: "zoom factor",
-    initial: "1.0",
+    initial: "1.5",
     update: (zoom) => `${Math.round(zoom * 100) / 100}`,
   },
   auto_rotate: {
@@ -125,8 +125,30 @@ const uniforms = {
   },
 };
 const scene = {
-  num_objects: 0, // on commence avec 2 objets
-  objects: [],
+  num_objects: 3,
+  objects: [
+    {
+      type: 0, // Sphere
+      pos: [0.0, -0.5, 1.5],
+      size: [0.5, 0.5, 0.5],
+      color: [1.0, 0.0, 0.0],
+      rotation: [0.0, 0.0, 0.0],
+    },
+    {
+      type: 1, // Cube
+      pos: [-1.0, 0.0, 0.0],
+      size: [0.5, 0.5, 0.5],
+      color: [0.0, 1.0, 0.0],
+      rotation: [0.0, 0.0, 0.0],
+    },
+    {
+      type: 2, // Torus
+      pos: [1.0, 0.0, 0.0],
+      size: [0.5, 0.2, 0.0],
+      color: [0.0, 0.0, 1.0],
+      rotation: [0.0, 0.0, 0.0],
+    },
+  ],
 };
 
 $("uniforms-table").innerHTML = Object.entries(uniforms)
