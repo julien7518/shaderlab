@@ -322,16 +322,14 @@ function updateObjectPanel() {
       container.appendChild(wrap);
     });
     // Taille sliders selon primitive
-    // 0: Sphere (X), 1: Cube (X,Y,Z), 2: Torus (X,Y), 3: Plane (X,Y), 4: Cone (X,Y,Z), 5: Pyramid (X,Y,Z)
+    // 0: Sphere (X), 1: Cube (X,Y,Z), 2: Torus (X,Y), 3: Plane (X,Y), 4: Cone (X,Z), 5: Pyramid (X,Y,Z)
     let sizeAxes = [];
     switch (obj.type) {
       case 0: // Sphere
         sizeAxes = ["x"];
         break;
-      case 1: // Cube/Box
       case 4: // Cone
-      case 5: // Pyramid
-        sizeAxes = ["x", "y", "z"];
+        sizeAxes = ["x", "z"];
         break;
       case 2: // Torus
       case 3: // Plane
@@ -438,7 +436,6 @@ addBtn.onclick = () => {
   scene.num_objects = scene.objects.length;
   updateObjectCount();
   updateObjectPanel();
-  console.log("Added object:", newObj);
 };
 
 updateObjectPanel();

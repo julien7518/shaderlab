@@ -18,6 +18,19 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/addon/mode/simple.min.js"></script>
+    <style>
+      @media (max-width: 768px) {
+        .mobile-hidden {
+          display: none !important;
+        }
+        #code-editor-container {
+          display: none !important;
+        }
+        #control-panel {
+          width: 100% !important;
+        }
+      }
+    </style>
   </head>
   <body class="font-mono bg-gray-900 text-white overflow-hidden">
     <div
@@ -97,7 +110,7 @@
             </div>
             <button
               id="code-editor-btn"
-              class="px-3 py-1 text-sm rounded bg-gray-700 hover:bg-gray-600 transition-colors whitespace-nowrap"
+              class="px-3 py-1 text-sm rounded bg-gray-700 hover:bg-gray-600 transition-colors whitespace-nowrap mobile-hidden"
               title="Toggle code editor panel (^+<)"
             >
               Code Editor
@@ -122,7 +135,7 @@
             </div>
             <button
               id="compile-btn"
-              class="px-3 py-1 text-sm rounded bg-green-700 hover:bg-green-600 transition-colors whitespace-nowrap"
+              class="px-3 py-1 text-sm rounded bg-green-700 hover:bg-green-600 transition-colors whitespace-nowrap mobile-hidden"
               title="Compile (Ctrl/Cmd+Enter)"
             >
               Compile
