@@ -57,6 +57,7 @@ let auto_rotate = 0;
 let fog_ratio = 0.02;
 let gamma_correct_ratio = 2.2;
 let isPanelOpen = true;
+let editorVisible = true;
 let isFullscreen = false;
 
 const $ = (id) => document.getElementById(id);
@@ -64,11 +65,13 @@ const canvas = $("canvas");
 const errorMsg = $("error-message");
 const compileBtn = $("compile-btn");
 const autoRotateBtn = $("auto-rotate-btn");
+const codeEditorBtn = $("code-editor-btn");
+const controlPanel = $("control-panel");
 const fullscreenBtn = $("fullscreen-btn");
 const fullscreenEnterIcon = $("fullscreen-enter-icon");
 const fullscreenExitIcon = $("fullscreen-exit-icon");
 const canvasContainer = $("canvas-container");
-const editorContainer = $("editor-container");
+const codeEditorContainer = $("code-editor-container");
 const uniforms = {
   resolution: {
     label: "resolution",
@@ -212,17 +215,23 @@ struct Scene {
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
 @group(0) @binding(1) var<storage, read> scene: Scene;`;
 
-autoRotateBtn.onclick = () => {
-  auto_rotate = auto_rotate === 1 ? 0 : 1;
+codeEditorBtn.onclick = () => {
+  toggleEditor();
 };
+
 const fogSlider = document.getElementById("fog-slider");
-const gammaSlider = document.getElementById("gamma-slider");
 fogSlider.addEventListener("input", (e) => {
   fog_ratio = parseFloat(e.target.value);
 });
+
+const gammaSlider = document.getElementById("gamma-slider");
 gammaSlider.addEventListener("input", (e) => {
   gamma_correct_ratio = parseFloat(e.target.value);
 });
+
+autoRotateBtn.onclick = () => {
+  auto_rotate = auto_rotate === 1 ? 0 : 1;
+};
 
 const primitiveSelector = document.getElementById("primitive-selector");
 const addBtn = document.getElementById("add-btn");
@@ -266,9 +275,6 @@ function updateObjectPanel() {
   scene.objects.forEach((obj, idx) => {
     const container = document.createElement("div");
     container.className = "object-controls";
-    container.style.paddingBottom = "6px";
-    container.style.paddingTop = "6px";
-    container.style.borderBottom = "1px solid #3c3836";
     // Titre
     const title = document.createElement("div");
     title.textContent =
@@ -371,21 +377,39 @@ function updateObjectPanel() {
     // Couleur picker
     const colorWrap = document.createElement("div");
     colorWrap.style.display = "flex";
+    colorWrap.style.justifyContent = "space-between";
     colorWrap.style.alignItems = "center";
     colorWrap.style.marginBottom = "2px";
+    const colorPicker = document.createElement("div");
     const colorLabel = document.createElement("span");
     colorLabel.textContent = "Couleur:";
     colorLabel.style.width = "60px";
     colorLabel.style.fontSize = "12px";
-    colorWrap.appendChild(colorLabel);
+    colorPicker.appendChild(colorLabel);
     const colorInput = document.createElement("input");
     colorInput.type = "color";
     colorInput.value = rgbToHex(obj.color);
     colorInput.addEventListener("input", (e) => {
       obj.color = hexToRgb(e.target.value);
     });
-    colorWrap.appendChild(colorInput);
+    colorPicker.appendChild(colorInput);
+    colorWrap.appendChild(colorPicker);
     container.appendChild(colorWrap);
+
+    // Delete button
+    const delBtn = document.createElement("button");
+    delBtn.className = "del-btn";
+    delBtn.textContent = "Delete";
+    delBtn.title = "Delete object";
+
+    delBtn.addEventListener("click", () => {
+      scene.objects.splice(idx, 1);
+      scene.num_objects = scene.objects.length;
+      updateObjectCount();
+      updateObjectPanel();
+    });
+
+    colorWrap.appendChild(delBtn);
     objectPanel.appendChild(container);
   });
 }
@@ -613,6 +637,18 @@ function resizeCanvas() {
 
 compileBtn.onclick = () => compileShader(editor.getValue());
 
+function toggleEditor() {
+  editorVisible = !editorVisible;
+
+  if (editorVisible) {
+    codeEditorContainer.style.display = "block";
+    controlPanel.style.width = "40%";
+  } else {
+    codeEditorContainer.style.display = "none";
+    controlPanel.style.width = "100%";
+  }
+}
+
 function toggleFullscreen() {
   if (
     !document.fullscreenElement &&
@@ -678,6 +714,10 @@ document.addEventListener("keydown", (e) => {
   if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
     e.preventDefault();
     compileShader(editor.getValue());
+  }
+  if ((e.ctrlKey || e.metaKey) && e.key === "<") {
+    e.preventDefault();
+    toggleEditor();
   }
   if (e.key === "f" && !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey) {
     if (document.activeElement !== editor.getInputField()) {

@@ -105,3 +105,27 @@
 #scene-objects:hover {
   scrollbar-color: rgba(80, 80, 80, 0.12) rgba(0, 0, 0, 0);
 }
+.object-controls {
+  padding-top: 6px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid #3c3836;
+}
+.del-btn {
+  padding-top: 0.25rem;
+  padding-bottom: 0.25rem;
+  padding-left: 0.75rem;
+  padding-right: 0.75rem;
+  border-radius: 0.25rem;
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+  white-space: nowrap;
+  background-color: #b91c1c;
+  transition-property: color, background-color, border-color,
+    text-decoration-color, fill, stroke;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  transition-duration: 300ms;
+
+  :hover {
+    background-color: #dc2626;
+  }
+}
