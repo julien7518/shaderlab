@@ -122,16 +122,8 @@ const uniforms = {
   },
 };
 const scene = {
-  sphere1: {
-    pos: [0.0, 0.0, -1.6],
-    radius: 0.8,
-    color: [1.0, 0.2, 0.2],
-  },
-  cube1: {
-    pos: [0.0, 0.0, 0.0],
-    size: 0.5,
-    color: [0.2, 1.0, 0.2],
-  },
+  num_objects: 0, // on commence avec 2 objets
+  objects: [],
 };
 
 $("uniforms-table").innerHTML = Object.entries(uniforms)
@@ -198,27 +190,27 @@ const uniformsStruct = `struct Uniforms {
   gamma_correct_ratio: f32,
 };
 
-struct Sphere {
-  pos: vec3<f32>,   // 3*4 = 12
-  radius: f32,      // 12+4 = 16
-  color: vec3<f32>, // 16+(3*4) = 28
-  rotation_x: f32     // 28+4 = 32
-};
-
-struct Cube {
-  pos: vec3<f32>,
-  size: f32,
-  color: vec3<f32>,
-  rotation_x: f32
+struct Object3D {
+  type_obj: f32,        // 0: Sphere, 1: Box, 2: Torus, 3: Plane, 4: Cone, 5: Pyramid
+  _padding: f32,
+  _padding1: f32,
+  _padding2: f32,
+  pos: vec4<f32>,
+  size: vec4<f32>,
+  color: vec4<f32>,
+  rotation: vec4<f32>,
 };
 
 struct Scene {
-  sphere1: Sphere,
-  cube1: Cube
+  num_objects: f32,
+  _pad0: f32,
+  _pad1: f32,
+  _pad2: f32,
+  objects: array<Object3D>,
 };
 
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
-@group(0) @binding(1) var<uniform> scene: Scene;`;
+@group(0) @binding(1) var<storage, read> scene: Scene;`;
 
 autoRotateBtn.onclick = () => {
   auto_rotate = auto_rotate === 1 ? 0 : 1;
@@ -231,6 +223,183 @@ fogSlider.addEventListener("input", (e) => {
 gammaSlider.addEventListener("input", (e) => {
   gamma_correct_ratio = parseFloat(e.target.value);
 });
+
+const primitiveSelector = document.getElementById("primitive-selector");
+const addBtn = document.getElementById("add-btn");
+const objectPanel = document.getElementById("scene-objects");
+
+function createObject3D(type) {
+  return {
+    type: type,
+    pos: [0.0, 0.0, 0.0],
+    size: [0.5, 0.5, 0.5],
+    color: [0.5, 0.5, 0.5],
+    rotation: [0.0, 0.0, 0.0],
+  };
+}
+
+// Fonction utilitaire pour convertir [r,g,b] float => hex
+function rgbToHex(rgb) {
+  return (
+    "#" +
+    rgb
+      .map((v) => {
+        let h = Math.round(Math.max(0, Math.min(1, v)) * 255).toString(16);
+        return h.length === 1 ? "0" + h : h;
+      })
+      .join("")
+  );
+}
+// hex => [r,g,b] float
+function hexToRgb(hex) {
+  hex = hex.replace("#", "");
+  return [
+    parseInt(hex.substring(0, 2), 16) / 255,
+    parseInt(hex.substring(2, 4), 16) / 255,
+    parseInt(hex.substring(4, 6), 16) / 255,
+  ];
+}
+
+function updateObjectPanel() {
+  if (!objectPanel) return;
+  objectPanel.innerHTML = "";
+  scene.objects.forEach((obj, idx) => {
+    const container = document.createElement("div");
+    container.className = "object-controls";
+    container.style.marginBottom = "6px";
+    container.style.paddingBottom = "4px";
+    container.style.borderBottom = "1px solid #3c3836";
+    // Titre
+    const title = document.createElement("div");
+    title.textContent =
+      "Objet #" +
+      (idx + 1) +
+      " (" +
+      (["Sphere", "Cube", "Torus", "Plane", "Cone", "Pyramid"][obj.type] ||
+        "Type " + obj.type) +
+      ")";
+    title.style.fontWeight = "bold";
+    title.style.fontSize = "13px";
+    title.style.marginBottom = "4px";
+    container.appendChild(title);
+    // Position sliders (toujours x, y, z)
+    ["x", "y", "z"].forEach((axis, i) => {
+      const wrap = document.createElement("div");
+      wrap.style.display = "flex";
+      wrap.style.alignItems = "center";
+      wrap.style.marginBottom = "2px";
+      const label = document.createElement("span");
+      label.textContent = "Pos " + axis + ":";
+      label.style.width = "60px";
+      label.style.fontSize = "12px";
+      wrap.appendChild(label);
+      const slider = document.createElement("input");
+      slider.type = "range";
+      slider.min = -5;
+      slider.max = 5;
+      slider.step = 0.01;
+      slider.value = obj.pos[i];
+      slider.style.flex = "1";
+      slider.addEventListener("input", (e) => {
+        obj.pos[i] = parseFloat(e.target.value);
+      });
+      wrap.appendChild(slider);
+      const val = document.createElement("span");
+      val.textContent = obj.pos[i].toFixed(2);
+      val.style.width = "36px";
+      val.style.fontSize = "11px";
+      val.style.textAlign = "right";
+      slider.addEventListener("input", (e) => {
+        val.textContent = parseFloat(e.target.value).toFixed(2);
+      });
+      wrap.appendChild(val);
+      container.appendChild(wrap);
+    });
+    // Taille sliders selon primitive
+    // 0: Sphere (X), 1: Cube (X,Y,Z), 2: Torus (X,Y), 3: Plane (X,Y), 4: Cone (X,Y,Z), 5: Pyramid (X,Y,Z)
+    let sizeAxes = [];
+    switch (obj.type) {
+      case 0: // Sphere
+        sizeAxes = ["x"];
+        break;
+      case 1: // Cube/Box
+      case 4: // Cone
+      case 5: // Pyramid
+        sizeAxes = ["x", "y", "z"];
+        break;
+      case 2: // Torus
+      case 3: // Plane
+        sizeAxes = ["x", "y"];
+        break;
+      default:
+        sizeAxes = ["x", "y", "z"];
+    }
+    sizeAxes.forEach((axis, i) => {
+      // i: index in sizeAxes, but must use correct index for obj.size (x=0,y=1,z=2)
+      let sizeIndex = { x: 0, y: 1, z: 2 }[axis];
+      const wrap = document.createElement("div");
+      wrap.style.display = "flex";
+      wrap.style.alignItems = "center";
+      wrap.style.marginBottom = "2px";
+      const label = document.createElement("span");
+      label.textContent = "Taille " + axis + ":";
+      label.style.width = "60px";
+      label.style.fontSize = "12px";
+      wrap.appendChild(label);
+      const slider = document.createElement("input");
+      slider.type = "range";
+      slider.min = 0.05;
+      slider.max = 3;
+      slider.step = 0.01;
+      slider.value = obj.size[sizeIndex];
+      slider.style.flex = "1";
+      slider.addEventListener("input", (e) => {
+        obj.size[sizeIndex] = parseFloat(e.target.value);
+      });
+      wrap.appendChild(slider);
+      const val = document.createElement("span");
+      val.textContent = obj.size[sizeIndex].toFixed(2);
+      val.style.width = "36px";
+      val.style.fontSize = "11px";
+      val.style.textAlign = "right";
+      slider.addEventListener("input", (e) => {
+        val.textContent = parseFloat(e.target.value).toFixed(2);
+      });
+      wrap.appendChild(val);
+      container.appendChild(wrap);
+    });
+    // Couleur picker
+    const colorWrap = document.createElement("div");
+    colorWrap.style.display = "flex";
+    colorWrap.style.alignItems = "center";
+    colorWrap.style.marginBottom = "2px";
+    const colorLabel = document.createElement("span");
+    colorLabel.textContent = "Couleur:";
+    colorLabel.style.width = "60px";
+    colorLabel.style.fontSize = "12px";
+    colorWrap.appendChild(colorLabel);
+    const colorInput = document.createElement("input");
+    colorInput.type = "color";
+    colorInput.value = rgbToHex(obj.color);
+    colorInput.addEventListener("input", (e) => {
+      obj.color = hexToRgb(e.target.value);
+    });
+    colorWrap.appendChild(colorInput);
+    container.appendChild(colorWrap);
+    objectPanel.appendChild(container);
+  });
+}
+
+addBtn.onclick = () => {
+  const typeValue = parseFloat(primitiveSelector.value);
+  const newObj = createObject3D(typeValue);
+  scene.objects.push(newObj);
+  scene.num_objects = scene.objects.length;
+  updateObjectPanel();
+  console.log("Added object:", newObj);
+};
+
+updateObjectPanel();
 
 async function initWebGPU() {
   if (!navigator.gpu)
@@ -246,8 +415,8 @@ async function initWebGPU() {
     usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
   });
   sceneBuffer = device.createBuffer({
-    size: 64,
-    usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+    size: 16 + 128 * 80,
+    usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
   });
   await compileShader(fallbackShader);
   return true;
@@ -287,7 +456,7 @@ async function compileShader(fragmentCode) {
         {
           binding: 1,
           visibility: GPUShaderStage.FRAGMENT,
-          buffer: { type: "uniform" },
+          buffer: { type: "read-only-storage" },
         },
       ],
     });
@@ -319,33 +488,60 @@ async function compileShader(fragmentCode) {
 
 function render() {
   if (!pipeline) return;
+  scene.num_objects = scene.objects.length;
   const currentTime = performance.now();
   const deltaTime = (currentTime - lastFrameTime) / 1000;
   const elapsedTime = (currentTime - startTime) / 1000;
   const uniformData = [canvas.width, canvas.height, elapsedTime, deltaTime, mouseX, mouseY, mouseDown ? 1 : 0, 0, zoom, frameCount, auto_rotate, fog_ratio, gamma_correct_ratio]; // prettier-ignore
-  const sceneData = [
-    scene.sphere1.pos[0],
-    scene.sphere1.pos[1],
-    scene.sphere1.pos[2],
-    scene.sphere1.radius,
 
-    scene.sphere1.color[0],
-    scene.sphere1.color[1],
-    scene.sphere1.color[2],
-    0.0,
+  const OBJECT_SIZE_FLOATS = 20;
+  const HEADER_SIZE_FLOATS = 4;
+  const totalFloats = HEADER_SIZE_FLOATS + scene.num_objects * OBJECT_SIZE_FLOATS; //prettier-ignore
 
-    scene.cube1.pos[0],
-    scene.cube1.pos[1],
-    scene.cube1.pos[2],
-    scene.cube1.size,
+  const sceneData = new Float32Array(totalFloats);
 
-    scene.cube1.color[0],
-    scene.cube1.color[1],
-    scene.cube1.color[2],
-    0.0,
-  ];
+  sceneData[0] = scene.num_objects;
+  sceneData[1] = 0.0;
+  sceneData[2] = 0.0;
+  sceneData[3] = 0.0;
+
+  for (let i = 0; i < scene.num_objects; i++) {
+    const obj = scene.objects[i];
+    const base = HEADER_SIZE_FLOATS + i * OBJECT_SIZE_FLOATS;
+
+    // type + padding
+    sceneData[base + 0] = obj.type;
+    sceneData[base + 1] = 0.0;
+    sceneData[base + 2] = 0.0;
+    sceneData[base + 3] = 0.0;
+
+    // pos (vec4)
+    sceneData[base + 4] = obj.pos[0];
+    sceneData[base + 5] = obj.pos[1];
+    sceneData[base + 6] = obj.pos[2];
+    sceneData[base + 7] = 0.0;
+
+    // size (vec4)
+    sceneData[base + 8] = obj.size[0];
+    sceneData[base + 9] = obj.size[1];
+    sceneData[base + 10] = obj.size[2];
+    sceneData[base + 11] = 0.0;
+
+    // color (vec4)
+    sceneData[base + 12] = obj.color[0];
+    sceneData[base + 13] = obj.color[1];
+    sceneData[base + 14] = obj.color[2];
+    sceneData[base + 15] = 0.0;
+
+    // rotation (vec4)
+    sceneData[base + 16] = obj.rotation[0];
+    sceneData[base + 17] = obj.rotation[1];
+    sceneData[base + 18] = obj.rotation[2];
+    sceneData[base + 19] = 0.0;
+  }
+
   device.queue.writeBuffer(uniformBuffer, 0, new Float32Array(uniformData));
-  device.queue.writeBuffer(sceneBuffer, 0, new Float32Array(sceneData));
+  device.queue.writeBuffer(sceneBuffer, 0, sceneData);
 
   const val = uniforms.resolution.update(canvas.width, canvas.height);
   if (val) $("u-resolution").textContent = val;

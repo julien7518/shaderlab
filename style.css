@@ -82,3 +82,26 @@
   flex: 1;
   min-height: 0;
 }
+
+#scene-objects::-webkit-scrollbar {
+  width: 6px;
+  background: transparent;
+}
+#scene-objects::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.07);
+  border-radius: 4px;
+}
+#scene-objects:hover::-webkit-scrollbar-thumb {
+  background: rgba(80, 80, 80, 0.12);
+}
+#scene-objects::-webkit-scrollbar-track {
+  background: transparent;
+}
+/* Hide scrollbar for Firefox */
+#scene-objects {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(0, 0, 0, 0) rgba(0, 0, 0, 0);
+}
+#scene-objects:hover {
+  scrollbar-color: rgba(80, 80, 80, 0.12) rgba(0, 0, 0, 0);
+}

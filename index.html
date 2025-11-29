@@ -181,7 +181,10 @@
                 </div>
               </div>
             </div>
-            <div class="text-sm" style="border-bottom: 1px solid #3c3836">
+            <div
+              class="text-sm flex flex-col w-full flex-1 overflow-hidden"
+              style="border-bottom: 1px solid #3c3836"
+            >
               <div
                 class="px-3 py-2 font-bold flex items-center justify-between"
               >
@@ -189,9 +192,41 @@
               </div>
               <div
                 id="scene"
-                class="flex-1 overflow-y-auto px-5 pb-2 text-xs space-y-3"
+                class="flex flex-col flex-1 overflow-hidden px-5 pb-2 text-xs"
               >
-                <p class="opacity-70">No controls yet — this panel is ready.</p>
+                <div class="flex gap-2 mb-2 justify-between">
+                  <select
+                    id="primitive-selector"
+                    class="px-2 py-1 text-sm rounded outline-none"
+                    style="
+                      background: #3c3836;
+                      color: #ebdbb2;
+                      border: 1px solid #665c54;
+                    "
+                  >
+                    <option value="0">Sphere</option>
+                    <option value="1">Box</option>
+                    <option value="2">Torus</option>
+                    <option value="3">Plane</option>
+                    <option value="4">Cone</option>
+                    <option value="5">Pyramid</option>
+                  </select>
+                  <button
+                    id="add-btn"
+                    class="px-3 py-1 text-sm rounded bg-green-700 hover:bg-green-600 transition-colors whitespace-nowrap"
+                    title="Add primitive"
+                  >
+                    Add
+                  </button>
+                </div>
+                <div
+                  id="scene-objects"
+                  class="flex flex-col gap-2 w-full flex-1 min-h-0 overflow-y-auto"
+                  style="
+                    scrollbar-width: thin;
+                    scrollbar-color: rgba(0, 0, 0, 0) rgba(0, 0, 0, 0);
+                  "
+                ></div>
               </div>
             </div>
           </div>
