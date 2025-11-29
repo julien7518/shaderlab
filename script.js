@@ -53,19 +53,25 @@ let mouseX = 0;
 let mouseY = 0;
 let mouseDown = false;
 let zoom = 1.0;
+let auto_rotate = 0;
+let fog_ratio = 0.02;
+let gamma_correct_ratio = 2.2;
 let isPanelOpen = true;
+let editorVisible = true;
 let isFullscreen = false;
 
 const $ = (id) => document.getElementById(id);
 const canvas = $("canvas");
 const errorMsg = $("error-message");
 const compileBtn = $("compile-btn");
+const autoRotateBtn = $("auto-rotate-btn");
+const codeEditorBtn = $("code-editor-btn");
+const controlPanel = $("control-panel");
 const fullscreenBtn = $("fullscreen-btn");
 const fullscreenEnterIcon = $("fullscreen-enter-icon");
 const fullscreenExitIcon = $("fullscreen-exit-icon");
 const canvasContainer = $("canvas-container");
-const editorContainer = $("editor-container");
-const shaderSelector = $("shader-selector");
+const codeEditorContainer = $("code-editor-container");
 const uniforms = {
   resolution: {
     label: "resolution",
@@ -97,6 +103,21 @@ const uniforms = {
     initial: "1.0",
     update: (zoom) => `${Math.round(zoom * 100) / 100}`,
   },
+  auto_rotate: {
+    label: "auto rotation",
+    initial: "0",
+    update: (auto_rotate) => `${auto_rotate}`,
+  },
+  fog_ratio: {
+    label: "fog",
+    initial: "0.02",
+    update: (fog_ratio) => `${fog_ratio}`,
+  },
+  gamma_correct_ratio: {
+    label: "gamma",
+    initial: "2.2",
+    update: (gamma_correct_ratio) => `${gamma_correct_ratio}`,
+  },
   frame: {
     label: "frame",
     initial: "0",
@@ -104,106 +125,9 @@ const uniforms = {
   },
 };
 const scene = {
-  sphere1: {
-    pos: [0.0, 0.0, -1.6],
-    radius: 0.8,
-    color: [1.0, 0.2, 0.2],
-  },
-  cube1: {
-    pos: [0.0, 0.0, 0.0],
-    size: 0.5,
-    color: [0.2, 1.0, 0.2],
-  },
+  num_objects: 0, // on commence avec 2 objets
+  objects: [],
 };
-
-// Bind Scene Editor Panel (HTML-defined)
-function initScenePanel() {
-  const x = $("sphere-x");
-  const y = $("sphere-y");
-  const z = $("sphere-z");
-  const r = $("sphere-radius");
-  const c = $("sphere-color");
-  const cx = $("cube-x");
-  const cy = $("cube-y");
-  const cz = $("cube-z");
-  const cr = $("cube-size");
-  const cc = $("cube-color");
-
-  // Initialize values based on scene
-  x.value = scene.sphere1.pos[0];
-  y.value = scene.sphere1.pos[1];
-  z.value = scene.sphere1.pos[2];
-  r.value = scene.sphere1.radius;
-  cx.value = scene.cube1.pos[0];
-  cy.value = scene.cube1.pos[1];
-  cz.value = scene.cube1.pos[2];
-  cr.value = scene.cube1.size;
-
-  c.value =
-    "#" +
-    (
-      (1 << 24) +
-      (Math.floor(scene.sphere1.color[0] * 255) << 16) +
-      (Math.floor(scene.sphere1.color[1] * 255) << 8) +
-      Math.floor(scene.sphere1.color[2] * 255)
-    )
-      .toString(16)
-      .slice(1);
-
-  cc.value =
-    "#" +
-    (
-      (1 << 24) +
-      (Math.floor(scene.sphere1.color[0] * 255) << 16) +
-      (Math.floor(scene.sphere1.color[1] * 255) << 8) +
-      Math.floor(scene.sphere1.color[2] * 255)
-    )
-      .toString(16)
-      .slice(1);
-
-  const updateScene = () => {
-    scene.sphere1.pos[0] = parseFloat(x.value);
-    scene.sphere1.pos[1] = parseFloat(y.value);
-    scene.sphere1.pos[2] = parseFloat(z.value);
-    scene.sphere1.radius = parseFloat(r.value);
-    scene.cube1.pos[0] = parseFloat(cx.value);
-    scene.cube1.pos[1] = parseFloat(cy.value);
-    scene.cube1.pos[2] = parseFloat(cz.value);
-    scene.cube1.size = parseFloat(cr.value);
-
-    const hex = c.value;
-    scene.sphere1.color = [
-      parseInt(hex.slice(1, 3), 16) / 255,
-      parseInt(hex.slice(3, 5), 16) / 255,
-      parseInt(hex.slice(5, 7), 16) / 255,
-    ];
-
-    const chex = cc.value;
-    scene.cube1.color = [
-      parseInt(chex.slice(1, 3), 16) / 255,
-      parseInt(chex.slice(3, 5), 16) / 255,
-      parseInt(chex.slice(5, 7), 16) / 255,
-    ];
-  };
-
-  [x, y, z, r, c, cx, cy, cz, cr, cc].forEach((el) =>
-    el.addEventListener("input", updateScene)
-  );
-
-  // Toggle behavior
-  const panel = $("scene-panel");
-  const toggle = $("scene-panel-toggle");
-
-  toggle.onclick = () => {
-    if (panel.style.height === "0px" || panel.style.height === "0") {
-      panel.style.height = panel.scrollHeight + "px";
-    } else {
-      panel.style.height = "0";
-    }
-  };
-}
-
-initScenePanel();
 
 $("uniforms-table").innerHTML = Object.entries(uniforms)
   .map(
@@ -265,31 +189,256 @@ const uniformsStruct = `struct Uniforms {
   zoom: f32,
   frame: u32,
   auto_rotate: f32,
-  _padding2: u32,
-  _padding3: u32,
+  fog_ratio: f32,
+  gamma_correct_ratio: f32,
 };
 
-struct Sphere {
-  pos: vec3<f32>,   // 3*4 = 12
-  radius: f32,      // 12+4 = 16
-  color: vec3<f32>, // 16+(3*4) = 28
-  _padding: u32     // 28+4 = 32
-};
-
-struct Cube {
-  pos: vec3<f32>,
-  size: f32,
-  color: vec3<f32>,
-  _padding: u32
+struct Object3D {
+  type_obj: f32,        // 0: Sphere, 1: Box, 2: Torus, 3: Plane, 4: Cone, 5: Pyramid
+  _padding: f32,
+  _padding1: f32,
+  _padding2: f32,
+  pos: vec4<f32>,
+  size: vec4<f32>,
+  color: vec4<f32>,
+  rotation: vec4<f32>,
 };
 
 struct Scene {
-  sphere1: Sphere,
-  cube1: Cube
+  num_objects: f32,
+  _pad0: f32,
+  _pad1: f32,
+  _pad2: f32,
+  objects: array<Object3D>,
 };
 
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
-@group(0) @binding(1) var<uniform> scene: Scene;`;
+@group(0) @binding(1) var<storage, read> scene: Scene;`;
+
+codeEditorBtn.onclick = () => {
+  toggleEditor();
+};
+
+const fogSlider = document.getElementById("fog-slider");
+fogSlider.addEventListener("input", (e) => {
+  fog_ratio = parseFloat(e.target.value);
+});
+
+const gammaSlider = document.getElementById("gamma-slider");
+gammaSlider.addEventListener("input", (e) => {
+  gamma_correct_ratio = parseFloat(e.target.value);
+});
+
+autoRotateBtn.onclick = () => {
+  auto_rotate = auto_rotate === 1 ? 0 : 1;
+};
+
+const primitiveSelector = document.getElementById("primitive-selector");
+const addBtn = document.getElementById("add-btn");
+const objectPanel = document.getElementById("scene-objects");
+
+function createObject3D(type) {
+  return {
+    type: type,
+    pos: [0.0, 0.0, 0.0],
+    size: [0.5, 0.5, 0.5],
+    color: [0.5, 0.5, 0.5],
+    rotation: [0.0, 0.0, 0.0],
+  };
+}
+
+// Fonction utilitaire pour convertir [r,g,b] float => hex
+function rgbToHex(rgb) {
+  return (
+    "#" +
+    rgb
+      .map((v) => {
+        let h = Math.round(Math.max(0, Math.min(1, v)) * 255).toString(16);
+        return h.length === 1 ? "0" + h : h;
+      })
+      .join("")
+  );
+}
+// hex => [r,g,b] float
+function hexToRgb(hex) {
+  hex = hex.replace("#", "");
+  return [
+    parseInt(hex.substring(0, 2), 16) / 255,
+    parseInt(hex.substring(2, 4), 16) / 255,
+    parseInt(hex.substring(4, 6), 16) / 255,
+  ];
+}
+
+function updateObjectPanel() {
+  if (!objectPanel) return;
+  objectPanel.innerHTML = "";
+  scene.objects.forEach((obj, idx) => {
+    const container = document.createElement("div");
+    container.className = "object-controls";
+    // Titre
+    const title = document.createElement("div");
+    title.textContent =
+      "Objet #" +
+      (idx + 1) +
+      " (" +
+      (["Sphere", "Cube", "Torus", "Plane", "Cone", "Pyramid"][obj.type] ||
+        "Type " + obj.type) +
+      ")";
+    title.style.fontWeight = "bold";
+    title.style.fontSize = "13px";
+    title.style.marginBottom = "4px";
+    container.appendChild(title);
+    // Position sliders (toujours x, y, z)
+    ["x", "y", "z"].forEach((axis, i) => {
+      const wrap = document.createElement("div");
+      wrap.style.display = "flex";
+      wrap.style.alignItems = "center";
+      wrap.style.marginBottom = "2px";
+      const label = document.createElement("span");
+      label.textContent = "Pos " + axis + ":";
+      label.style.width = "60px";
+      label.style.fontSize = "12px";
+      wrap.appendChild(label);
+      const slider = document.createElement("input");
+      slider.type = "range";
+      slider.min = -5;
+      slider.max = 5;
+      slider.step = 0.01;
+      slider.value = obj.pos[i];
+      slider.style.flex = "1";
+      slider.addEventListener("input", (e) => {
+        obj.pos[i] = parseFloat(e.target.value);
+      });
+      wrap.appendChild(slider);
+      const val = document.createElement("span");
+      val.textContent = obj.pos[i].toFixed(2);
+      val.style.width = "36px";
+      val.style.fontSize = "11px";
+      val.style.textAlign = "right";
+      slider.addEventListener("input", (e) => {
+        val.textContent = parseFloat(e.target.value).toFixed(2);
+      });
+      wrap.appendChild(val);
+      container.appendChild(wrap);
+    });
+    // Taille sliders selon primitive
+    // 0: Sphere (X), 1: Cube (X,Y,Z), 2: Torus (X,Y), 3: Plane (X,Y), 4: Cone (X,Z), 5: Pyramid (X,Y,Z)
+    let sizeAxes = [];
+    switch (obj.type) {
+      case 0: // Sphere
+        sizeAxes = ["x"];
+        break;
+      case 4: // Cone
+        sizeAxes = ["x", "z"];
+        break;
+      case 2: // Torus
+      case 3: // Plane
+        sizeAxes = ["x", "y"];
+        break;
+      default:
+        sizeAxes = ["x", "y", "z"];
+    }
+    sizeAxes.forEach((axis, i) => {
+      // i: index in sizeAxes, but must use correct index for obj.size (x=0,y=1,z=2)
+      let sizeIndex = { x: 0, y: 1, z: 2 }[axis];
+      const wrap = document.createElement("div");
+      wrap.style.display = "flex";
+      wrap.style.alignItems = "center";
+      wrap.style.marginBottom = "2px";
+      const label = document.createElement("span");
+      label.textContent = "Taille " + axis + ":";
+      label.style.width = "60px";
+      label.style.fontSize = "12px";
+      wrap.appendChild(label);
+      const slider = document.createElement("input");
+      slider.type = "range";
+      slider.min = 0.05;
+      slider.max = 3;
+      slider.step = 0.01;
+      slider.value = obj.size[sizeIndex];
+      slider.style.flex = "1";
+      slider.addEventListener("input", (e) => {
+        obj.size[sizeIndex] = parseFloat(e.target.value);
+      });
+      wrap.appendChild(slider);
+      const val = document.createElement("span");
+      val.textContent = obj.size[sizeIndex].toFixed(2);
+      val.style.width = "36px";
+      val.style.fontSize = "11px";
+      val.style.textAlign = "right";
+      slider.addEventListener("input", (e) => {
+        val.textContent = parseFloat(e.target.value).toFixed(2);
+      });
+      wrap.appendChild(val);
+      container.appendChild(wrap);
+    });
+    // Couleur picker
+    const colorWrap = document.createElement("div");
+    colorWrap.style.display = "flex";
+    colorWrap.style.justifyContent = "space-between";
+    colorWrap.style.alignItems = "center";
+    colorWrap.style.marginBottom = "2px";
+    const colorPicker = document.createElement("div");
+    const colorLabel = document.createElement("span");
+    colorLabel.textContent = "Couleur:";
+    colorLabel.style.width = "60px";
+    colorLabel.style.fontSize = "12px";
+    colorPicker.appendChild(colorLabel);
+    const colorInput = document.createElement("input");
+    colorInput.type = "color";
+    colorInput.value = rgbToHex(obj.color);
+    colorInput.addEventListener("input", (e) => {
+      obj.color = hexToRgb(e.target.value);
+    });
+    colorPicker.appendChild(colorInput);
+    colorWrap.appendChild(colorPicker);
+    container.appendChild(colorWrap);
+
+    // Delete button
+    const delBtn = document.createElement("button");
+    delBtn.className = "del-btn";
+    delBtn.textContent = "Delete";
+    delBtn.title = "Delete object";
+
+    delBtn.addEventListener("click", () => {
+      scene.objects.splice(idx, 1);
+      scene.num_objects = scene.objects.length;
+      updateObjectCount();
+      updateObjectPanel();
+    });
+
+    colorWrap.appendChild(delBtn);
+    objectPanel.appendChild(container);
+  });
+}
+
+function updateObjectCount() {
+  const counter = document.getElementById("object-count");
+  const addBtn = document.getElementById("add-btn");
+  const maxObjects = 128;
+
+  const current = scene.objects.length;
+  counter.textContent = `${current} / ${maxObjects}`;
+
+  if (current >= maxObjects) {
+    addBtn.disabled = true;
+    addBtn.classList.add("opacity-50", "cursor-not-allowed");
+  } else {
+    addBtn.disabled = false;
+    addBtn.classList.remove("opacity-50", "cursor-not-allowed");
+  }
+}
+
+addBtn.onclick = () => {
+  const typeValue = parseFloat(primitiveSelector.value);
+  const newObj = createObject3D(typeValue);
+  scene.objects.push(newObj);
+  scene.num_objects = scene.objects.length;
+  updateObjectCount();
+  updateObjectPanel();
+};
+
+updateObjectPanel();
 
 async function initWebGPU() {
   if (!navigator.gpu)
@@ -305,8 +454,8 @@ async function initWebGPU() {
     usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
   });
   sceneBuffer = device.createBuffer({
-    size: 64,
-    usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+    size: 16 + 128 * 80,
+    usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
   });
   await compileShader(fallbackShader);
   return true;
@@ -346,7 +495,7 @@ async function compileShader(fragmentCode) {
         {
           binding: 1,
           visibility: GPUShaderStage.FRAGMENT,
-          buffer: { type: "uniform" },
+          buffer: { type: "read-only-storage" },
         },
       ],
     });
@@ -378,33 +527,60 @@ async function compileShader(fragmentCode) {
 
 function render() {
   if (!pipeline) return;
+  scene.num_objects = scene.objects.length;
   const currentTime = performance.now();
   const deltaTime = (currentTime - lastFrameTime) / 1000;
   const elapsedTime = (currentTime - startTime) / 1000;
-  const uniformData = [canvas.width, canvas.height, elapsedTime, deltaTime, mouseX, mouseY, mouseDown ? 1 : 0, 0, zoom, frameCount, 0, 0, 0]; // prettier-ignore
-  const sceneData = [
-    scene.sphere1.pos[0],
-    scene.sphere1.pos[1],
-    scene.sphere1.pos[2],
-    scene.sphere1.radius,
+  const uniformData = [canvas.width, canvas.height, elapsedTime, deltaTime, mouseX, mouseY, mouseDown ? 1 : 0, 0, zoom, frameCount, auto_rotate, fog_ratio, gamma_correct_ratio]; // prettier-ignore
 
-    scene.sphere1.color[0],
-    scene.sphere1.color[1],
-    scene.sphere1.color[2],
-    0.0,
+  const OBJECT_SIZE_FLOATS = 20;
+  const HEADER_SIZE_FLOATS = 4;
+  const totalFloats = HEADER_SIZE_FLOATS + scene.num_objects * OBJECT_SIZE_FLOATS; //prettier-ignore
 
-    scene.cube1.pos[0],
-    scene.cube1.pos[1],
-    scene.cube1.pos[2],
-    scene.cube1.size,
+  const sceneData = new Float32Array(totalFloats);
 
-    scene.cube1.color[0],
-    scene.cube1.color[1],
-    scene.cube1.color[2],
-    0.0,
-  ];
+  sceneData[0] = scene.num_objects;
+  sceneData[1] = 0.0;
+  sceneData[2] = 0.0;
+  sceneData[3] = 0.0;
+
+  for (let i = 0; i < scene.num_objects; i++) {
+    const obj = scene.objects[i];
+    const base = HEADER_SIZE_FLOATS + i * OBJECT_SIZE_FLOATS;
+
+    // type + padding
+    sceneData[base + 0] = obj.type;
+    sceneData[base + 1] = 0.0;
+    sceneData[base + 2] = 0.0;
+    sceneData[base + 3] = 0.0;
+
+    // pos (vec4)
+    sceneData[base + 4] = obj.pos[0];
+    sceneData[base + 5] = obj.pos[1];
+    sceneData[base + 6] = obj.pos[2];
+    sceneData[base + 7] = 0.0;
+
+    // size (vec4)
+    sceneData[base + 8] = obj.size[0];
+    sceneData[base + 9] = obj.size[1];
+    sceneData[base + 10] = obj.size[2];
+    sceneData[base + 11] = 0.0;
+
+    // color (vec4)
+    sceneData[base + 12] = obj.color[0];
+    sceneData[base + 13] = obj.color[1];
+    sceneData[base + 14] = obj.color[2];
+    sceneData[base + 15] = 0.0;
+
+    // rotation (vec4)
+    sceneData[base + 16] = obj.rotation[0];
+    sceneData[base + 17] = obj.rotation[1];
+    sceneData[base + 18] = obj.rotation[2];
+    sceneData[base + 19] = 0.0;
+  }
+
   device.queue.writeBuffer(uniformBuffer, 0, new Float32Array(uniformData));
-  device.queue.writeBuffer(sceneBuffer, 0, new Float32Array(sceneData));
+  device.queue.writeBuffer(sceneBuffer, 0, sceneData);
 
   const val = uniforms.resolution.update(canvas.width, canvas.height);
   if (val) $("u-resolution").textContent = val;
@@ -413,6 +589,10 @@ function render() {
   $("u-mousexy").textContent = uniforms.mousexy.update(mouseX, mouseY);
   $("u-mousez").textContent = uniforms.mousez.update(mouseDown);
   $("u-frame").textContent = uniforms.frame.update(frameCount);
+  $("u-auto_rotate").textContent = uniforms.auto_rotate.update(auto_rotate);
+  $("u-fog_ratio").textContent = uniforms.fog_ratio.update(fog_ratio);
+  $("u-gamma_correct_ratio").textContent =
+    uniforms.gamma_correct_ratio.update(gamma_correct_ratio);
 
   lastFrameTime = currentTime;
 
@@ -453,6 +633,18 @@ function resizeCanvas() {
 }
 
 compileBtn.onclick = () => compileShader(editor.getValue());
+
+function toggleEditor() {
+  editorVisible = !editorVisible;
+
+  if (editorVisible) {
+    codeEditorContainer.style.display = "block";
+    controlPanel.style.width = "40%";
+  } else {
+    codeEditorContainer.style.display = "none";
+    controlPanel.style.width = "100%";
+  }
+}
 
 function toggleFullscreen() {
   if (
@@ -520,6 +712,10 @@ document.addEventListener("keydown", (e) => {
     e.preventDefault();
     compileShader(editor.getValue());
   }
+  if ((e.ctrlKey || e.metaKey) && e.key === "<") {
+    e.preventDefault();
+    toggleEditor();
+  }
   if (e.key === "f" && !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey) {
     if (document.activeElement !== editor.getInputField()) {
       e.preventDefault();
@@ -529,88 +725,27 @@ document.addEventListener("keydown", (e) => {
 });
 window.addEventListener("resize", resizeCanvas);
 
-// Handle shader selection
-shaderSelector.addEventListener("change", (e) => {
-  const selectedShader = e.target.value;
-  if (selectedShader && shaders[selectedShader]) {
-    editor.setValue(shaders[selectedShader].content);
-    compileShader(shaders[selectedShader].content);
-  }
-});
-
-// Load shaders from files
-async function loadShaders() {
-  let loadedCount = 0;
-  let manifest = null;
-
-  // Try to load the manifest file
+async function loadBasicShader() {
   try {
-    const manifestResponse = await fetch("./shaders/manifest.json");
-    if (manifestResponse.ok) {
-      manifest = await manifestResponse.json();
-      console.log("Loaded shader manifest");
+    const response = await fetch("./shaders/raymarch_basic.wgsl");
+    if (response.ok) {
+      fallbackShader = await response.text();
+      editor.setValue(fallbackShader);
+    } else {
+      console.warn(
+        "raymarch_basic.wgsl not found, using built-in fallback shader"
+      );
     }
   } catch (err) {
-    console.log("No manifest found, will try loading mouse.wgsl directly");
-  }
-
-  // If we have a manifest, use it. Otherwise, try loading mouse.wgsl
-  const shaderList = manifest?.shaders || [
-    { file: "mouse.wgsl", name: "Mouse Interaction" },
-  ];
-
-  // Load each shader file
-  for (const shaderInfo of shaderList) {
-    try {
-      const response = await fetch(`./shaders/${shaderInfo.file}`);
-      if (response.ok) {
-        const content = await response.text();
-        shaders[shaderInfo.file] = {
-          content: content,
-          name: shaderInfo.name || shaderInfo.file.replace(".wgsl", ""),
-          description: shaderInfo.description || "",
-        };
-        loadedCount++;
-        console.log(`Loaded shader: ${shaderInfo.file}`);
-      }
-    } catch (err) {
-      console.error(`Failed to load shader ${shaderInfo.file}:`, err);
-    }
-  }
-
-  // Populate shader selector after loading
-  if (loadedCount > 0) {
-    // Clear existing options except the first one
-    while (shaderSelector.options.length > 1) {
-      shaderSelector.remove(1);
-    }
-
-    // Add loaded shaders to selector
-    Object.keys(shaders).forEach((filename) => {
-      const option = document.createElement("option");
-      option.value = filename;
-      option.textContent = shaders[filename].name;
-      if (shaders[filename].description) {
-        option.title = shaders[filename].description;
-      }
-      shaderSelector.appendChild(option);
-    });
-
-    // Set first shader as default
-    const firstShader = Object.keys(shaders)[0];
-    if (firstShader) {
-      fallbackShader = shaders[firstShader].content;
-      editor.setValue(fallbackShader);
-      shaderSelector.value = firstShader;
-    }
-  } else {
-    console.log("No shaders loaded, using fallback");
+    console.warn(
+      "Error loading raymarch_basic.wgsl, using fallback shader",
+      err
+    );
   }
 }
 
-// Main initialization
 const main = async () => {
-  await loadShaders();
+  await loadBasicShader();
   resizeCanvas();
   if (await initWebGPU()) render();
 };

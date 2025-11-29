@@ -18,6 +18,19 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/addon/mode/simple.min.js"></script>
+    <style>
+      @media (max-width: 768px) {
+        .mobile-hidden {
+          display: none !important;
+        }
+        #code-editor-container {
+          display: none !important;
+        }
+        #control-panel {
+          width: 100% !important;
+        }
+      }
+    </style>
   </head>
   <body class="font-mono bg-gray-900 text-white overflow-hidden">
     <div
@@ -95,17 +108,13 @@
               </svg>
               <span>[WGSL] Fragment Shader</span>
             </div>
-            <select
-              id="shader-selector"
-              class="px-2 py-1 text-sm rounded"
-              style="
-                background: #3c3836;
-                color: #ebdbb2;
-                border: 1px solid #665c54;
-              "
+            <button
+              id="code-editor-btn"
+              class="px-3 py-1 text-sm rounded bg-gray-700 hover:bg-gray-600 transition-colors whitespace-nowrap mobile-hidden"
+              title="Toggle code editor panel (^+<)"
             >
-              <option value="">-- Select Shader --</option>
-            </select>
+              Code Editor
+            </button>
           </div>
           <div
             class="w-full h-px"
@@ -126,7 +135,7 @@
             </div>
             <button
               id="compile-btn"
-              class="px-3 py-1 text-sm rounded bg-green-700 hover:bg-green-600 transition-colors whitespace-nowrap"
+              class="px-3 py-1 text-sm rounded bg-green-700 hover:bg-green-600 transition-colors whitespace-nowrap mobile-hidden"
               title="Compile (Ctrl/Cmd+Enter)"
             >
               Compile
@@ -135,127 +144,157 @@
         </div>
         <div class="flex flex-1 overflow-hidden">
           <div id="code-editor-container" class="flex-1 overflow-hidden">
-            <textarea id="code-editor"></textarea>
+            <textarea id="code-editor" class="overflow-hidden"></textarea>
           </div>
           <div
-            id="uniforms-panel"
-            class="flex transition-all duration-300"
-            style="
-              position: fixed;
-              top: 12px;
-              left: 12px;
-              width: 260px;
-              height: auto;
-              background: rgba(255, 255, 255, 0.08);
-              backdrop-filter: blur(20px) saturate(180%);
-              -webkit-backdrop-filter: blur(20px) saturate(180%);
-              border-radius: 12px;
-              border: 1px solid rgba(255, 255, 255, 0.15);
-              z-index: 50;
-            "
+            id="control-panel"
+            class="flex flex-col h-full w-2/5 bg-gray-800 border-l border-gray-700"
+            style="background: #1d2021; color: #ebdbb2"
           >
             <div
-              id="panel-toggle"
-              class="w-6 cursor-pointer hover:opacity-80 flex items-center justify-center"
+              class="px-3 py-2 font-bold flex items-center justify-between"
+              style="border-bottom: 1px solid #3c3836"
             >
-              <span id="toggle-arrow">▶</span>
+              <span>Control Panel</span>
+            </div>
+            <div id="ICI LE CON">
+              <div class="text-sm" style="border-bottom: 1px solid #3c3836">
+                <div
+                  class="px-3 py-2 font-bold flex items-center justify-between"
+                >
+                  <span class="text-sm">General settings</span>
+                </div>
+                <div
+                  id="general"
+                  class="flex-1 overflow-y-auto px-5 pb-2 text-xs space-y-3"
+                >
+                  <div class="flex flex-col gap-2">
+                    <label class="text-xs opacity-70" for="fog-slider"
+                      >Fog</label
+                    >
+                    <input
+                      type="range"
+                      id="fog-slider"
+                      min="0"
+                      max="0.1"
+                      step="0.01"
+                      value="0.02"
+                      class="w-full"
+                    />
+
+                    <label class="text-xs opacity-70" for="gamma-slider"
+                      >Gamma Correction</label
+                    >
+                    <input
+                      type="range"
+                      id="gamma-slider"
+                      min="0.5"
+                      max="3"
+                      step="0.01"
+                      value="2.2"
+                      class="w-full"
+                    />
+                    <button
+                      id="auto-rotate-btn"
+                      class="px-3 py-1 text-sm rounded bg-gray-700 hover:bg-gray-600 transition-colors whitespace-nowrap"
+                      title="Auto rotation of the scene"
+                    >
+                      Auto rotate
+                    </button>
+                  </div>
+                </div>
+              </div>
             </div>
             <div
-              id="panel-content"
-              class="flex-1 flex flex-col overflow-hidden"
+              class="text-sm flex flex-col w-full flex-1 overflow-hidden"
+              style="border-bottom: 1px solid #3c3836"
             >
-              <div>
-                <span class="text-amber-600">Uniforms</span>
+              <div
+                class="px-3 py-2 font-bold flex items-center justify-between"
+              >
+                <span class="text-sm">Scene settings</span>
               </div>
-              <div>
-                <table class="text-sm">
-                  <tbody id="uniforms-table"></tbody>
-                </table>
+              <div
+                id="scene"
+                class="flex flex-col flex-1 overflow-hidden px-5 pb-2 text-xs"
+              >
+                <div class="flex gap-2 mb-2 justify-between">
+                  <select
+                    id="primitive-selector"
+                    class="px-2 py-1 text-sm rounded outline-none"
+                    style="
+                      background: #3c3836;
+                      color: #ebdbb2;
+                      border: 1px solid #665c54;
+                    "
+                  >
+                    <option value="0">Sphere</option>
+                    <option value="1">Box</option>
+                    <option value="2">Torus</option>
+                    <option value="3">Plane</option>
+                    <option value="4">Cone</option>
+                    <option value="5">Pyramid</option>
+                  </select>
+                  <button
+                    id="add-btn"
+                    class="px-3 py-1 text-sm rounded bg-green-700 hover:bg-green-600 transition-colors whitespace-nowrap"
+                    title="Add primitive"
+                  >
+                    Add
+                  </button>
+                </div>
+                <span
+                  id="object-count"
+                  class="flex text-xs px-3 justify-around py-1 bg-gray-700 rounded cursor-help"
+                  title="Nombre d'objets limité à 128 pour des questions de performances GPU"
+                >
+                  0 / 128
+                </span>
+                <div
+                  id="scene-objects"
+                  class="flex flex-col gap-2 w-full flex-1 min-h-0 overflow-y-auto"
+                  style="
+                    scrollbar-width: thin;
+                    scrollbar-color: rgba(0, 0, 0, 0) rgba(0, 0, 0, 0);
+                  "
+                ></div>
               </div>
             </div>
           </div>
         </div>
         <div
-          id="scene-panel"
-          class="w-full transition-all duration-300"
+          id="uniforms-panel"
+          class="flex fixed transition-all duration-300"
           style="
-            height: 0;
-            overflow: hidden;
-            background: rgba(255, 255, 255, 0.06);
-            backdrop-filter: blur(18px) saturate(160%);
-            -webkit-backdrop-filter: blur(18px) saturate(160%);
-            border-top: 1px solid rgba(255, 255, 255, 0.12);
+            top: 12px;
+            left: 12px;
+            width: 260px;
+            height: auto;
+            background: rgba(255, 255, 255, 0.08);
+            backdrop-filter: blur(20px) saturate(180%);
+            -webkit-backdrop-filter: blur(20px) saturate(180%);
+            border-radius: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            z-index: 50;
           "
         >
-          <div class="p-4 flex flex-col gap-3 text-sm">
-            <span class="text-amber-500 font-semibold">Scene Editor</span>
-
-            <label class="flex flex-col">
-              <span class="opacity-70">Sphere X</span>
-              <input id="sphere-x" type="range" min="-10" max="10" step="0.1" />
-            </label>
-
-            <label class="flex flex-col">
-              <span class="opacity-70">Sphere Y</span>
-              <input id="sphere-y" type="range" min="-10" max="10" step="0.1" />
-            </label>
-
-            <label class="flex flex-col">
-              <span class="opacity-70">Sphere Z</span>
-              <input id="sphere-z" type="range" min="-20" max="0" step="0.1" />
-            </label>
-
-            <label class="flex flex-col">
-              <span class="opacity-70">Radius</span>
-              <input
-                id="sphere-radius"
-                type="range"
-                min="0.1"
-                max="5"
-                step="0.1"
-              />
-            </label>
-
-            <label class="flex flex-col">
-              <span class="opacity-70">Color</span>
-              <input id="sphere-color" type="color" />
-            </label>
+          <div
+            id="panel-toggle"
+            class="w-6 cursor-pointer hover:opacity-80 flex items-center justify-center"
+          >
+            <span id="toggle-arrow">▶</span>
           </div>
-
-          <div class="p-4 flex flex-col gap-3 text-sm">
-            <label class="flex flex-col">
-              <span class="opacity-70">Cube X</span>
-              <input id="cube-x" type="range" min="-10" max="10" step="0.1" />
-            </label>
-
-            <label class="flex flex-col">
-              <span class="opacity-70">Cube Y</span>
-              <input id="cube-y" type="range" min="-10" max="10" step="0.1" />
-            </label>
-
-            <label class="flex flex-col">
-              <span class="opacity-70">Cube Z</span>
-              <input id="cube-z" type="range" min="-20" max="0" step="0.1" />
-            </label>
-
-            <label class="flex flex-col">
-              <span class="opacity-70">Size</span>
-              <input id="cube-size" type="range" min="0.1" max="5" step="0.1" />
-            </label>
-
-            <label class="flex flex-col">
-              <span class="opacity-70">Color</span>
-              <input id="cube-color" type="color" />
-            </label>
+          <div id="panel-content" class="flex-1 flex flex-col overflow-hidden">
+            <div>
+              <span class="text-amber-600">Uniforms</span>
+            </div>
+            <div>
+              <table class="text-sm">
+                <tbody id="uniforms-table"></tbody>
+              </table>
+            </div>
           </div>
         </div>
-
-        <button
-          id="scene-panel-toggle"
-          class="w-full py-1 text-center text-xs bg-gray-700 hover:bg-gray-600 transition-colors"
-        >
-          Toggle Scene Panel
-        </button>
       </div>
     </div>
   </body>

@@ -5,7 +5,7 @@ fn fs_main(@builtin(position) fragCoord: vec4<f32>) -> @location(0) vec4<f32> {
 
   // Orbital Controll
   let pitch = clamp((uniforms.mouse.y / uniforms.resolution.y), 0.05, 1.5);
-  let yaw = uniforms.time * uniforms.auto_rotate * 0.5; // Auto-orbits around the center
+  let yaw = uniforms.time * uniforms.auto_rotate * 0.5;
 
   // Camera Coords
   let cam_dist = 4.0 * uniforms.zoom; // Distance from the target
@@ -42,11 +42,11 @@ fn fs_main(@builtin(position) fragCoord: vec4<f32>) -> @location(0) vec4<f32> {
 
     // Phong Shading
     let ambient = 0.2;
-    var albedo = get_material_color(result.y, hit_pos);
+    var albedo = result.yzw;
     let phong = albedo * (ambient + diffuse * shadow * 0.8);
 
     // Exponential Fog
-    let fog = exp(-result.x * 0.02);
+    let fog = exp(-result.x * uniforms.fog_ratio);
     let color = mix(MAT_SKY_COLOR, phong, fog);
 
     return vec4<f32>(gamma_correct(color), 1.0);
@@ -59,7 +59,7 @@ fn fs_main(@builtin(position) fragCoord: vec4<f32>) -> @location(0) vec4<f32> {
 
 // Gamma Correction
 fn gamma_correct(color: vec3<f32>) -> vec3<f32> {
-  return pow(color, vec3<f32>(1.0 / 2.2));
+  return pow(color, vec3<f32>(1.0 / uniforms.gamma_correct_ratio));
 }
 
 // Constants
@@ -67,41 +67,8 @@ const MAX_DIST: f32 = 100.0;
 const SURF_DIST: f32 = 0.001;
 const MAX_STEPS: i32 = 256;
 
-// Material Types
-const MAT_PLANE: f32 = 0;
-const MAT_SPHERE: f32 = 1;
-const MAT_BOX: f32 = 2;
-const MAT_TORUS: f32 = 3;
-
 // Material Colors
 const MAT_SKY_COLOR: vec3<f32> = vec3<f32>(0.7, 0.8, 0.9);
-const MAT_PLANE_COLOR: vec3<f32> = vec3<f32>(0.8, 0.8, 0.8);
-const MAT_BOX_COLOR: vec3<f32> = vec3<f32>(0.3, 1.0, 0.3);
-const MAT_TORUS_COLOR: vec3<f32> = vec3<f32>(0.3, 0.3, 1.0);
-
-fn get_material_color(mat_id: f32, p: vec3<f32>) -> vec3<f32> {
-  if mat_id == MAT_PLANE {
-    let checker = floor(p.x) + floor(p.z);
-    let col1 = vec3<f32>(0.9, 0.9, 0.9);
-    let col2 = vec3<f32>(0.2, 0.2, 0.2);
-    return select(col2, col1, i32(checker) % 2 == 0);
-  } else if mat_id == MAT_SPHERE {
-    return vec3<f32>(
-      scene.sphere1.color[0],
-      scene.sphere1.color[1],
-      scene.sphere1.color[2]
-    );
-  } else if mat_id == MAT_BOX {
-    return vec3<f32>(
-      scene.cube1.color[0],
-      scene.cube1.color[1],
-      scene.cube1.color[2]
-    );
-  } else if mat_id == MAT_TORUS {
-    return MAT_TORUS_COLOR;
-  }
-  return vec3<f32>(0.5, 0.5, 0.5);
-}
 
 // SDF Primitives
 fn sd_sphere(p: vec3<f32>, r: f32) -> f32 {
@@ -202,70 +169,69 @@ fn op_round(dist: f32, rad: f32) -> f32 {
 }
 
 // Scene description - returns (distance, material_id)
-fn get_dist(p: vec3<f32>) -> vec2<f32> {
+fn get_dist(p: vec3<f32>) -> vec4<f32> {
   let time = uniforms.time;
-  var res = vec2<f32>(MAX_DIST, -1.0);
+  var res = vec4<f32>(MAX_DIST, vec3<f32>(-1.0, -1.0, -1.0));
 
   // Ground plane
   let plane_dist = sd_plane(p, vec3<f32>(0.0, 1.0, 0.0), 0.5);
   if plane_dist < res.x {
-    res = vec2<f32>(plane_dist, MAT_PLANE);
+    let checker = floor(p.x) + floor(p.z);
+    let col1 = vec3<f32>(0.9, 0.9, 0.9);
+    let col2 = vec3<f32>(0.2, 0.2, 0.2);
+    res = vec4<f32>(plane_dist, select(col2, col1, i32(checker) % 2 == 0));
   }
 
-  // Animated sphere
-  let sphere_pos = scene.sphere1.pos;
-  let sphere_rad = scene.sphere1.radius;
-  let sphere_dist = sd_sphere(p - sphere_pos, sphere_rad);
+  let count = scene.num_objects;
 
-  // Rotating box
-  var box_p = p - scene.cube1.pos;
-  let rot_y = mat2x2f(cos(time), -sin(time), sin(time), cos(time));
-  let rotated_xz = rot_y * vec2<f32>(box_p.x, box_p.z);
-  box_p = vec3<f32>(rotated_xz.x, box_p.y, rotated_xz.y);
-  let box_dist = sd_box(box_p, vec3<f32>(scene.cube1.size, scene.cube1.size, scene.cube1.size));
+  for (var i: u32 = 0u; i < u32(count); i = i + 1u) {
+    let obj = scene.objects[i];
+    var d = 99999.0;
 
-  // Smooth union the sphere and box
-  let smooth_blend = 0.4; // Adjust for desired blend amount
-  let combined_dist = op_smooth_union(sphere_dist, box_dist, smooth_blend);
+    // Object position
+    let pos = obj.pos.xyz;
+    let size = obj.size.xyz;
+    let col  = obj.color.xyz;
+    let rot  = obj.rotation.xyz;
 
-  // Assign material ID for the combined object based on which primitive is closer
-  var combined_mat_id = 0.0;
-  if sphere_dist < box_dist {
-      combined_mat_id = MAT_SPHERE; // Sphere material
-  } else {
-      combined_mat_id = MAT_BOX; // Box material
-  }
-
-  if combined_dist < res.x {
-    res = vec2<f32>(combined_dist, combined_mat_id);
-  }
-
-  // Torus
-  let torus_dist = sd_torus(p - vec3<f32>(-1.5, 0.5, 1.0), vec2<f32>(0.4, 0.15));
-  if torus_dist < res.x {
-    res = vec2<f32>(torus_dist, MAT_TORUS);
+    if obj.type_obj == 0 {
+      d = sd_sphere(p - pos, size.x);
+    } else if obj.type_obj == 1 {
+      d = sd_box(p - pos, size);
+    } else if obj.type_obj == 2 {
+      d = sd_torus(p - pos, vec2<f32>(size.x, size.y));
+    } else if obj.type_obj == 3 {
+      d = sd_plane(p - pos, size, size.x);
+    } else if obj.type_obj == 4 {
+      d = sd_cone(p - pos, vec2<f32>(size.x, size.y), size.z);
+    } else if obj.type_obj == 5 {
+      d = sd_pyramid(p - pos, size.y);
+    }
+    if d < res.x {
+      res = vec4<f32>(d, obj.color.xyz);
+    }
   }
 
   return res;
 }
 
 // Ray marching function - returns (distance, material_id)
-fn ray_march(ro: vec3<f32>, rd: vec3<f32>) -> vec2<f32> {
+fn ray_march(ro: vec3<f32>, rd: vec3<f32>) -> vec4<f32> {
   var d = 0.0;
-  var mat_id = -1.0;
+  var color = vec3<f32>(-1.0, -1.0, -1.0);
 
   for (var i = 0; i < MAX_STEPS; i++) {
     let p = ro + rd * d;
     let dist_mat = get_dist(p);
     d += dist_mat.x;
-    mat_id = dist_mat.y;
+    color = dist_mat.yzw;
 
     if dist_mat.x < SURF_DIST || d > MAX_DIST {
       break;
     }
   }
 
-  return vec2<f32>(d, mat_id);
+  return vec4<f32>(d, color);
 }
 
 // Calculate normal using gradient
