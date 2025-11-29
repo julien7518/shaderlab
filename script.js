@@ -266,8 +266,8 @@ function updateObjectPanel() {
   scene.objects.forEach((obj, idx) => {
     const container = document.createElement("div");
     container.className = "object-controls";
-    container.style.marginBottom = "6px";
-    container.style.paddingBottom = "4px";
+    container.style.paddingBottom = "6px";
+    container.style.paddingTop = "6px";
     container.style.borderBottom = "1px solid #3c3836";
     // Titre
     const title = document.createElement("div");
@@ -390,11 +390,29 @@ function updateObjectPanel() {
   });
 }
 
+function updateObjectCount() {
+  const counter = document.getElementById("object-count");
+  const addBtn = document.getElementById("add-btn");
+  const maxObjects = 128;
+
+  const current = scene.objects.length;
+  counter.textContent = `${current} / ${maxObjects}`;
+
+  if (current >= maxObjects) {
+    addBtn.disabled = true;
+    addBtn.classList.add("opacity-50", "cursor-not-allowed");
+  } else {
+    addBtn.disabled = false;
+    addBtn.classList.remove("opacity-50", "cursor-not-allowed");
+  }
+}
+
 addBtn.onclick = () => {
   const typeValue = parseFloat(primitiveSelector.value);
   const newObj = createObject3D(typeValue);
   scene.objects.push(newObj);
   scene.num_objects = scene.objects.length;
+  updateObjectCount();
   updateObjectPanel();
   console.log("Added object:", newObj);
 };
