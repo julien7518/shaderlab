@@ -18,19 +18,6 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/addon/mode/simple.min.js"></script>
-    <style>
-      @media (max-width: 768px) {
-        .mobile-hidden {
-          display: none !important;
-        }
-        #code-editor-container {
-          display: none !important;
-        }
-        #control-panel {
-          width: 100% !important;
-        }
-      }
-    </style>
   </head>
   <body class="font-mono bg-gray-900 text-white overflow-hidden">
     <div
@@ -48,7 +35,7 @@
         ></div>
         <button
           id="fullscreen-btn"
-          class="absolute bottom-2.5 right-2.5 p-2 bg-black/60 hover:bg-black/80 text-white rounded transition-all z-20"
+          class="hidden md:block absolute bottom-2.5 right-2.5 p-2 bg-black/60 hover:bg-black/80 text-white rounded transition-all z-20"
           title="Toggle Fullscreen (F)"
         >
           <svg
@@ -110,7 +97,7 @@
             </div>
             <button
               id="code-editor-btn"
-              class="px-3 py-1 text-sm rounded bg-gray-700 hover:bg-gray-600 transition-colors whitespace-nowrap mobile-hidden"
+              class="hidden px-3 py-1 text-sm rounded bg-gray-700 hover:bg-gray-600 transition-colors whitespace-nowrap md:flex"
               title="Toggle code editor panel (^+<)"
             >
               Code Editor
@@ -135,7 +122,7 @@
             </div>
             <button
               id="compile-btn"
-              class="px-3 py-1 text-sm rounded bg-green-700 hover:bg-green-600 transition-colors whitespace-nowrap mobile-hidden"
+              class="hidden px-3 py-1 text-sm rounded bg-green-700 hover:bg-green-600 transition-colors whitespace-nowrap md:flex"
               title="Compile (Ctrl/Cmd+Enter)"
             >
               Compile
@@ -143,12 +130,15 @@
           </div>
         </div>
         <div class="flex flex-1 overflow-hidden">
-          <div id="code-editor-container" class="flex-1 overflow-hidden">
+          <div
+            id="code-editor-container"
+            class="hidden flex-1 overflow-hidden md:flex"
+          >
             <textarea id="code-editor" class="overflow-hidden"></textarea>
           </div>
           <div
             id="control-panel"
-            class="flex flex-col h-full w-2/5 bg-gray-800 border-l border-gray-700"
+            class="flex flex-col h-full bg-gray-800 border-l border-gray-700 md:w-2/5"
             style="background: #1d2021; color: #ebdbb2"
           >
             <div
@@ -194,6 +184,20 @@
                       value="2.2"
                       class="w-full"
                     />
+
+                    <label class="text-xs opacity-70" for="smooth-slider"
+                      >Smooth</label
+                    >
+                    <input
+                      type="range"
+                      id="smooth-slider"
+                      min="0"
+                      max="0.5"
+                      step="0.01"
+                      value="0.2"
+                      class="w-full"
+                    />
+
                     <button
                       id="auto-rotate-btn"
                       class="px-3 py-1 text-sm rounded bg-gray-700 hover:bg-gray-600 transition-colors whitespace-nowrap"
@@ -205,8 +209,13 @@
                 </div>
               </div>
             </div>
+            <div class="flex px-5 md:hidden">
+              <p class="text-sm text-justify">
+                Open this website on a bigger screen to modify the scene
+              </p>
+            </div>
             <div
-              class="text-sm flex flex-col w-full flex-1 overflow-hidden"
+              class="hidden text-sm flex flex-col w-full flex-1 overflow-hidden md:flex"
               style="border-bottom: 1px solid #3c3836"
             >
               <div

@@ -55,6 +55,7 @@ let mouseDown = false;
 let zoom = 1.5;
 let auto_rotate = 0;
 let fog_ratio = 0.02;
+let smooth_factor = 0.2;
 let gamma_correct_ratio = 2.2;
 let isPanelOpen = true;
 let editorVisible = true;
@@ -126,27 +127,26 @@ const uniforms = {
 };
 const scene = {
   num_objects: 3,
+  selected_object: -1,
+  smooth_k: smooth_factor,
   objects: [
     {
       type: 0, // Sphere
       pos: [0.0, -0.5, 1.5],
       size: [0.5, 0.5, 0.5],
       color: [1.0, 0.0, 0.0],
-      rotation: [0.0, 0.0, 0.0],
     },
     {
       type: 1, // Cube
       pos: [-1.0, 0.0, 0.0],
       size: [0.5, 0.5, 0.5],
       color: [0.0, 1.0, 0.0],
-      rotation: [0.0, 0.0, 0.0],
     },
     {
       type: 2, // Torus
       pos: [1.0, 0.0, 0.0],
       size: [0.5, 0.2, 0.0],
       color: [0.0, 0.0, 1.0],
-      rotation: [0.0, 0.0, 0.0],
     },
   ],
 };
@@ -222,14 +222,13 @@ struct Object3D {
   _padding2: f32,
   pos: vec4<f32>,
   size: vec4<f32>,
-  color: vec4<f32>,
-  rotation: vec4<f32>,
+  color: vec4<f32>
 };
 
 struct Scene {
   num_objects: f32,
-  _pad0: f32,
-  _pad1: f32,
+  selected: f32,
+  smooth_k: f32,
   _pad2: f32,
   objects: array<Object3D>,
 };
@@ -244,6 +243,11 @@ codeEditorBtn.onclick = () => {
 const fogSlider = document.getElementById("fog-slider");
 fogSlider.addEventListener("input", (e) => {
   fog_ratio = parseFloat(e.target.value);
+});
+
+const smoothSlider = document.getElementById("smooth-slider");
+smoothSlider.addEventListener("input", (e) => {
+  smooth_factor = parseFloat(e.target.value);
 });
 
 const gammaSlider = document.getElementById("gamma-slider");
@@ -265,7 +269,6 @@ function createObject3D(type) {
     pos: [0.0, 0.0, 0.0],
     size: [0.5, 0.5, 0.5],
     color: [0.5, 0.5, 0.5],
-    rotation: [0.0, 0.0, 0.0],
   };
 }
 
@@ -300,7 +303,7 @@ function updateObjectPanel() {
     // Titre
     const title = document.createElement("div");
     title.textContent =
-      "Objet #" +
+      "Object #" +
       (idx + 1) +
       " (" +
       (["Sphere", "Cube", "Torus", "Plane", "Cone", "Pyramid"][obj.type] ||
@@ -463,22 +466,47 @@ addBtn.onclick = () => {
 updateObjectPanel();
 
 async function initWebGPU() {
-  if (!navigator.gpu)
-    return (errorMsg.textContent = "WebGPU not supported"), false;
+  if (!navigator.gpu) {
+    const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+
+    if (isSafari) {
+      alert("WebGPU is not available. Safari 26 or newer is required.");
+      errorMsg.textContent =
+        "Safari detected — WebGPU requires Safari 26 or newer.";
+    } else {
+      alert("WebGPU is not available on your browser.");
+      errorMsg.textContent = "WebGPU not supported.";
+    }
+
+    return false;
+  }
+
   const adapter = await navigator.gpu.requestAdapter();
-  if (!adapter) return (errorMsg.textContent = "No GPU adapter"), false;
+  if (!adapter) {
+    errorMsg.textContent = "No GPU adapter found.";
+    alert("No compatible WebGPU adapter was detected.");
+    return false;
+  }
+
   device = await adapter.requestDevice();
   context = canvas.getContext("webgpu");
+
   const format = navigator.gpu.getPreferredCanvasFormat();
-  context.configure({ device, format });
+  context.configure({
+    device,
+    format,
+  });
+
   uniformBuffer = device.createBuffer({
     size: 64,
     usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
   });
+
   sceneBuffer = device.createBuffer({
-    size: 16 + 128 * 80,
+    size: 16 + 128 * 64,
     usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
   });
+
   await compileShader(fallbackShader);
   return true;
 }
@@ -555,15 +583,15 @@ function render() {
   const elapsedTime = (currentTime - startTime) / 1000;
   const uniformData = [canvas.width, canvas.height, elapsedTime, deltaTime, mouseX, mouseY, mouseDown ? 1 : 0, 0, zoom, frameCount, auto_rotate, fog_ratio, gamma_correct_ratio]; // prettier-ignore
 
-  const OBJECT_SIZE_FLOATS = 20;
+  const OBJECT_SIZE_FLOATS = 16;
   const HEADER_SIZE_FLOATS = 4;
   const totalFloats = HEADER_SIZE_FLOATS + scene.num_objects * OBJECT_SIZE_FLOATS; //prettier-ignore
 
   const sceneData = new Float32Array(totalFloats);
 
   sceneData[0] = scene.num_objects;
-  sceneData[1] = 0.0;
-  sceneData[2] = 0.0;
+  sceneData[1] = -1.0;
+  sceneData[2] = smooth_factor;
   sceneData[3] = 0.0;
 
   for (let i = 0; i < scene.num_objects; i++) {
@@ -593,12 +621,6 @@ function render() {
     sceneData[base + 13] = obj.color[1];
     sceneData[base + 14] = obj.color[2];
     sceneData[base + 15] = 0.0;
-
-    // rotation (vec4)
-    sceneData[base + 16] = obj.rotation[0];
-    sceneData[base + 17] = obj.rotation[1];
-    sceneData[base + 18] = obj.rotation[2];
-    sceneData[base + 19] = 0.0;
   }
 
   device.queue.writeBuffer(uniformBuffer, 0, new Float32Array(uniformData));

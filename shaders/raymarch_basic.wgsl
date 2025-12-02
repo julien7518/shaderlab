@@ -5,7 +5,7 @@ fn fs_main(@builtin(position) fragCoord: vec4<f32>) -> @location(0) vec4<f32> {
 
   // Orbital Controll
   let pitch = clamp((uniforms.mouse.y / uniforms.resolution.y), 0.05, 1.5);
-  let yaw = uniforms.time * uniforms.auto_rotate * 0.5;
+  let yaw = (((1 - uniforms.auto_rotate) * clamp((uniforms.mouse.x / uniforms.resolution.x), 0.05, 1.5)) + (uniforms.time * uniforms.auto_rotate * 0.5));
 
   // Camera Coords
   let cam_dist = 4.0 * uniforms.zoom; // Distance from the target
@@ -172,6 +172,7 @@ fn op_round(dist: f32, rad: f32) -> f32 {
 fn get_dist(p: vec3<f32>) -> vec4<f32> {
   let time = uniforms.time;
   var res = vec4<f32>(MAX_DIST, vec3<f32>(-1.0, -1.0, -1.0));
+  var from_plane = false;
 
   // Ground plane
   let plane_dist = sd_plane(p, vec3<f32>(0.0, 1.0, 0.0), 0.5);
@@ -180,6 +181,7 @@ fn get_dist(p: vec3<f32>) -> vec4<f32> {
     let col1 = vec3<f32>(0.9, 0.9, 0.9);
     let col2 = vec3<f32>(0.2, 0.2, 0.2);
     res = vec4<f32>(plane_dist, select(col2, col1, i32(checker) % 2 == 0));
+    from_plane = true;
   }
 
   let count = scene.num_objects;
@@ -192,7 +194,6 @@ fn get_dist(p: vec3<f32>) -> vec4<f32> {
     let pos = obj.pos.xyz;
     let size = obj.size.xyz;
     let col  = obj.color.xyz;
-    let rot  = obj.rotation.xyz;
 
     if obj.type_obj == 0 {
       d = sd_sphere(p - pos, size.x);
@@ -207,8 +208,20 @@ fn get_dist(p: vec3<f32>) -> vec4<f32> {
     } else if obj.type_obj == 5 {
       d = sd_pyramid(p - pos, size.y);
     }
-    if d < res.x {
-      res = vec4<f32>(d, obj.color.xyz);
+    
+    let currentDist = res.x;
+    let objDist = d;
+
+    if (from_plane) {
+      if (objDist < currentDist) {
+        res = vec4<f32>(objDist, col);
+        from_plane = false;
+      }
+    } else {
+      let smoothDist = op_smooth_union(currentDist, objDist, scene.smooth_k);
+      let h = clamp(0.5 + 0.5 * (objDist - currentDist) / scene.smooth_k, 0.0, 1.0);
+      let blendedColor = mix(col, res.yzw, h);
+      res = vec4<f32>(smoothDist, blendedColor);
     }
   }
 
