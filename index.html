@@ -142,12 +142,12 @@
             style="background: #1d2021; color: #ebdbb2"
           >
             <div
-              class="px-3 py-2 font-bold flex items-center justify-between"
+              class="px-3 py-2 font-bold hidden md:flex items-center justify-between"
               style="border-bottom: 1px solid #3c3836"
             >
               <span>Control Panel</span>
             </div>
-            <div id="ICI LE CON">
+            <div>
               <div class="text-sm" style="border-bottom: 1px solid #3c3836">
                 <div
                   class="px-3 py-2 font-bold flex items-center justify-between"
@@ -185,7 +185,9 @@
                       class="w-full"
                     />
 
-                    <label class="text-xs opacity-70" for="smooth-slider"
+                    <label
+                      class="text-xs opacity-70 hidden md:flex"
+                      for="smooth-slider"
                       >Smooth</label
                     >
                     <input
@@ -195,12 +197,12 @@
                       max="0.5"
                       step="0.01"
                       value="0.2"
-                      class="w-full"
+                      class="w-full hidden md:flex"
                     />
 
                     <button
                       id="auto-rotate-btn"
-                      class="px-3 py-1 text-sm rounded bg-gray-700 hover:bg-gray-600 transition-colors whitespace-nowrap"
+                      class="px-3 mt-1 py-1 text-sm rounded bg-gray-700 hover:bg-gray-600 transition-colors whitespace-nowrap"
                       title="Auto rotation of the scene"
                     >
                       Auto rotate
@@ -209,7 +211,7 @@
                 </div>
               </div>
             </div>
-            <div class="flex px-5 md:hidden">
+            <div class="flex px-5 h-full py-5 md:hidden">
               <p class="text-sm text-justify">
                 Open this website on a bigger screen to modify the scene
               </p>

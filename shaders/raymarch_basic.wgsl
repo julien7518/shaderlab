@@ -139,29 +139,9 @@ fn sd_pyramid(p: vec3<f32>, h: f32) -> f32 {
 }
 
 // SDF Operations
-fn op_union(d1: f32, d2: f32) -> f32 {
-  return min(d1, d2);
-}
-
-fn op_subtract(d1: f32, d2: f32) -> f32 {
-  return max(-d1, d2);
-}
-
-fn op_intersect(d1: f32, d2: f32) -> f32 {
-  return max(d1, d2);
-}
-
 fn op_smooth_union(d1: f32, d2: f32, k: f32) -> f32 {
   let h = clamp(0.5 + 0.5 * (d2 - d1) / k, 0.0, 1.0);
   return mix(d2, d1, h) - k * h * (1.0 - h);
-}
-
-fn op_smooth_subtract(d1: f32, d2: f32, k: f32) -> f32 {
-  return -op_smooth_union(d1,-d2,k);
-}
-
-fn op_xor(d1: f32, d2: f32) -> f32 {
-  return max(min(d1,d2),-max(d1,d2));
 }
 
 fn op_round(dist: f32, rad: f32) -> f32 {

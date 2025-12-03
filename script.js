@@ -229,7 +229,7 @@ struct Scene {
   num_objects: f32,
   selected: f32,
   smooth_k: f32,
-  _pad2: f32,
+  _padding: f32,
   objects: array<Object3D>,
 };
 
@@ -240,17 +240,17 @@ codeEditorBtn.onclick = () => {
   toggleEditor();
 };
 
-const fogSlider = document.getElementById("fog-slider");
+const fogSlider = $("fog-slider");
 fogSlider.addEventListener("input", (e) => {
   fog_ratio = parseFloat(e.target.value);
 });
 
-const smoothSlider = document.getElementById("smooth-slider");
+const smoothSlider = $("smooth-slider");
 smoothSlider.addEventListener("input", (e) => {
   smooth_factor = parseFloat(e.target.value);
 });
 
-const gammaSlider = document.getElementById("gamma-slider");
+const gammaSlider = $("gamma-slider");
 gammaSlider.addEventListener("input", (e) => {
   gamma_correct_ratio = parseFloat(e.target.value);
 });
@@ -259,9 +259,9 @@ autoRotateBtn.onclick = () => {
   auto_rotate = auto_rotate === 1 ? 0 : 1;
 };
 
-const primitiveSelector = document.getElementById("primitive-selector");
-const addBtn = document.getElementById("add-btn");
-const objectPanel = document.getElementById("scene-objects");
+const primitiveSelector = $("primitive-selector");
+const addBtn = $("add-btn");
+const objectPanel = $("scene-objects");
 
 function createObject3D(type) {
   return {
@@ -438,8 +438,8 @@ function updateObjectPanel() {
 }
 
 function updateObjectCount() {
-  const counter = document.getElementById("object-count");
-  const addBtn = document.getElementById("add-btn");
+  const counter = $("object-count");
+  const addBtn = $("add-btn");
   const maxObjects = 128;
 
   const current = scene.objects.length;
@@ -469,22 +469,55 @@ async function initWebGPU() {
   if (!navigator.gpu) {
     const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
 
-    if (isSafari) {
-      alert("WebGPU is not available. Safari 26 or newer is required.");
-      errorMsg.textContent =
-        "Safari detected — WebGPU requires Safari 26 or newer.";
-    } else {
-      alert("WebGPU is not available on your browser.");
-      errorMsg.textContent = "WebGPU not supported.";
+    const ctx = canvas.getContext("2d");
+    if (ctx) {
+      ctx.fillStyle = "#111";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = "white";
+      ctx.font = "34px sans-serif";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
     }
 
+    if (isSafari) {
+      alert("WebGPU is not available. Safari 26 or newer is required.");
+
+      ctx.fillText(
+        "WebGPU requires Safari 26 or newer.",
+        canvas.width / 2,
+        canvas.height / 2
+      );
+    } else {
+      alert("WebGPU is not available on your browser.");
+
+      ctx.fillText(
+        "WebGPU not supported on this browser.",
+        canvas.width / 2,
+        canvas.height / 2
+      );
+    }
     return false;
   }
 
   const adapter = await navigator.gpu.requestAdapter();
   if (!adapter) {
-    errorMsg.textContent = "No GPU adapter found.";
-    alert("No compatible WebGPU adapter was detected.");
+    alert("No compatible GPU adapter was detected.");
+
+    const ctx = canvas.getContext("2d");
+    if (ctx) {
+      ctx.fillStyle = "#111";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = "white";
+      ctx.font = "18px sans-serif";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(
+        "No compatible GPU adapter found.",
+        canvas.width / 2,
+        canvas.height / 2
+      );
+    }
+
     return false;
   }
 
