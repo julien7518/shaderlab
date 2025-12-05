@@ -533,7 +533,7 @@ async function initWebGPU() {
       ctx.fillStyle = "#111";
       ctx.fillRect(0, 0, canvas.width, canvas.height);
       ctx.fillStyle = "white";
-      ctx.font = "18px sans-serif";
+      ctx.font = "34px sans-serif";
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
       ctx.fillText(
