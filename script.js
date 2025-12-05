@@ -55,7 +55,7 @@ let mouseDown = false;
 let zoom = 1.5;
 let auto_rotate = 0;
 let fog_ratio = 0.02;
-let smooth_factor = 0.2;
+let smooth_factor = 0.3;
 let gamma_correct_ratio = 2.2;
 let isPanelOpen = true;
 let editorVisible = true;
@@ -132,8 +132,8 @@ const scene = {
   objects: [
     {
       type: 0, // Sphere
-      pos: [0.0, -0.5, 1.5],
-      size: [0.5, 0.5, 0.5],
+      pos: [1.0, 0.0, -1.5],
+      size: [1.0, 0.0, 0.0],
       color: [1.0, 0.0, 0.0],
     },
     {
@@ -402,19 +402,44 @@ function updateObjectPanel() {
     colorWrap.style.display = "flex";
     colorWrap.style.justifyContent = "space-between";
     colorWrap.style.alignItems = "center";
-    colorWrap.style.marginBottom = "2px";
-    const colorPicker = document.createElement("div");
+    colorWrap.style.marginBottom = "4px";
+
+    // Label
     const colorLabel = document.createElement("span");
     colorLabel.textContent = "Couleur:";
-    colorLabel.style.width = "60px";
     colorLabel.style.fontSize = "12px";
-    colorPicker.appendChild(colorLabel);
+    colorLabel.style.color = "#ddd";
+    colorLabel.style.marginRight = "8px";
+
+    // Wrapper pour un look plus propre
+    const colorPicker = document.createElement("div");
+    colorPicker.style.display = "flex";
+    colorPicker.style.alignItems = "center";
+    colorPicker.style.gap = "8px";
+
+    // Input color customisé
     const colorInput = document.createElement("input");
     colorInput.type = "color";
     colorInput.value = rgbToHex(obj.color);
+    colorInput.style.width = "44px";
+    colorInput.style.height = "22px";
+    colorInput.style.padding = "0";
+    colorInput.style.border = "none";
+    colorInput.style.outline = "none";
+    colorInput.style.background = "transparent";
+    colorInput.style.cursor = "pointer";
+
+    // Pour enlever le carré blanc autour du picker (Chrome, Edge, etc)
+    colorInput.style.appearance = "none";
+    colorInput.style.webkitAppearance = "none";
+    colorInput.style.borderRadius = "4px";
+    colorInput.style.boxShadow = "0 0 0 1px #444 inset"; // contour fin
+
     colorInput.addEventListener("input", (e) => {
       obj.color = hexToRgb(e.target.value);
     });
+
+    colorPicker.appendChild(colorLabel);
     colorPicker.appendChild(colorInput);
     colorWrap.appendChild(colorPicker);
     container.appendChild(colorWrap);
