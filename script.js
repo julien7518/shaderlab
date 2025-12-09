@@ -66,6 +66,10 @@ let activeObjectIndex = null;
 let isPanelOpen = true;
 let editorVisible = true;
 let isFullscreen = false;
+let isDraggingGizmo = false;
+let draggedAxis = null; // 'x', 'y', ou 'z'
+let dragStartPos = { x: 0, y: 0 };
+let objectStartPos = { x: 0, y: 0, z: 0 };
 
 const $ = (id) => document.getElementById(id);
 const canvas = $("canvas");
@@ -138,18 +142,21 @@ const scene = {
   objects: [
     {
       type: 0, // Sphere
-      pos: [1.0, 0.0, -1.5],
-      size: [1.0, 0.0, 0.0],
+      selected: 0.0,
+      pos: [0.0, -0.5, 1.5],
+      size: [0.5, 0.0, 0.0],
       color: [1.0, 0.0, 0.0],
     },
     {
       type: 1, // Cube
+      selected: 0.0,
       pos: [-1.0, 0.0, 0.0],
       size: [0.5, 0.5, 0.5],
       color: [0.0, 1.0, 0.0],
     },
     {
       type: 2, // Torus
+      selected: 0.0,
       pos: [1.0, 0.0, 0.0],
       size: [0.5, 0.2, 0.0],
       color: [0.0, 0.0, 1.0],
@@ -176,27 +183,97 @@ canvas.addEventListener("mousemove", (e) => {
     (e.clientY - rect.top) * dpr,
   ];
 });
-canvas.addEventListener("mousedown", async (e) => {
-  mouseDown = true;
 
+canvas.addEventListener("mousedown", async (e) => {
   const rect = canvas.getBoundingClientRect();
   const dpr = devicePixelRatio || 1;
   const x = Math.floor((e.clientX - rect.left) * dpr);
   const y = Math.floor((e.clientY - rect.top) * dpr);
 
-  const id = await pickObjectAt(x, y);
+  const pickResult = await pickObjectAt(x, y);
 
-  console.log("Picked ID:", id);
-  if (id > 0) {
-    activeObjectIndex = id - 1;
+  if (pickResult.type === "gizmo") {
+    isDraggingGizmo = true;
+    draggedAxis = pickResult.axis;
+    dragStartPos = { x: e.clientX, y: e.clientY };
+
+    const obj = scene.objects[activeObjectIndex];
+    objectStartPos = { x: obj.pos[0], y: obj.pos[1], z: obj.pos[2] };
+
+    console.log(`Dragging ${draggedAxis} axis`);
+  } else if (pickResult.id > 0) {
+    activeObjectIndex = pickResult.id - 1;
     scene.selected_object = activeObjectIndex;
+
+    // Reset all selections
+    for (const obj of scene.objects) obj.selected = 0.0;
+
+    scene.objects[activeObjectIndex].selected = 1.0;
+    console.log("Selected object:", activeObjectIndex);
+
+    // Update panel immediately so the orange border appears
+    updateObjectPanel();
   } else {
     activeObjectIndex = null;
     scene.selected_object = -1;
+    for (const obj of scene.objects) {
+      obj.selected = 0.0;
+    }
+    updateObjectPanel();
+  }
+
+  setEditorState(
+    0,
+    activeObjectIndex !== null ? activeObjectIndex : 0xffffffff
+  );
+
+  mouseDown = true;
+});
+
+canvas.addEventListener("mousemove", (e) => {
+  const rect = canvas.getBoundingClientRect();
+  const dpr = devicePixelRatio || 1;
+  [mouseX, mouseY] = [
+    (e.clientX - rect.left) * dpr,
+    (e.clientY - rect.top) * dpr,
+  ];
+
+  // Gestion du drag du gizmo
+  if (isDraggingGizmo && activeObjectIndex !== null && draggedAxis) {
+    const deltaX = (e.clientX - dragStartPos.x) * 0.01; // Sensibilité ajustable
+    const deltaY = (e.clientY - dragStartPos.y) * 0.01;
+
+    const obj = scene.objects[activeObjectIndex];
+
+    // Appliquer le mouvement selon l'axe
+    switch (draggedAxis) {
+      case "x":
+        obj.pos[0] = objectStartPos.x + deltaX;
+        break;
+      case "y":
+        obj.pos[1] = objectStartPos.y - deltaY; // Inverser Y car écran
+        break;
+      case "z":
+        obj.pos[2] = objectStartPos.z + deltaY;
+        break;
+    }
+
+    // Mettre à jour le panneau si nécessaire
+    updateObjectPanel();
   }
 });
-canvas.addEventListener("mouseup", () => (mouseDown = false));
-canvas.addEventListener("mouseleave", () => (mouseDown = false));
+
+canvas.addEventListener("mouseup", () => {
+  mouseDown = false;
+  isDraggingGizmo = false;
+  draggedAxis = null;
+});
+
+canvas.addEventListener("mouseleave", () => {
+  mouseDown = false;
+  isDraggingGizmo = false;
+  draggedAxis = null;
+});
 window.addEventListener(
   "wheel",
   (e) => {
@@ -240,10 +317,10 @@ const uniformsStruct = `struct Uniforms {
 };
 
 struct Object3D {
-  type_obj: f32,        // 0: Sphere, 1: Box, 2: Torus, 3: Plane, 4: Cone, 5: Pyramid
+  type_obj: f32,        // 0: Sphere, 1: Box, 2: Torus, 4: Cone, 5: Pyramid, 6: Cylinder
+  selected: f32,
   _padding: f32,
   _padding1: f32,
-  _padding2: f32,
   pos: vec4<f32>,
   size: vec4<f32>,
   color: vec4<f32>
@@ -260,6 +337,8 @@ struct Scene {
 struct EditorState {
   id_mode : u32,
   selected_index : u32,
+  _padding: u32,
+  _padding1: u32,
 };
 
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
@@ -330,6 +409,14 @@ function updateObjectPanel() {
   scene.objects.forEach((obj, idx) => {
     const container = document.createElement("div");
     container.className = "object-controls";
+    // Highlight border if selected
+    if (idx === activeObjectIndex) {
+      container.style.border = "1px solid #ffaa00";
+      container.style.padding = "4px";
+    } else {
+      container.style.border = "none";
+      container.style.padding = "";
+    }
     // Titre
     const title = document.createElement("div");
     title.textContent =
@@ -597,7 +684,7 @@ async function initWebGPU() {
   });
 
   editorStateBuffer = device.createBuffer({
-    size: 8,
+    size: 16,
     usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
   });
 
@@ -693,7 +780,10 @@ async function compileShader(fragmentCode) {
 
 async function pickObjectAt(px, py) {
   // 1) Activer ID rendering mode
-  setEditorState(1, 0);
+  setEditorState(
+    1,
+    activeObjectIndex !== null ? activeObjectIndex : 0xffffffff
+  );
 
   const encoder = device.createCommandEncoder();
 
@@ -714,8 +804,6 @@ async function pickObjectAt(px, py) {
   pass.draw(3);
   pass.end();
 
-  // 3) Copier UN pixel dans readbackBuffer
-  // bytesPerRow must be aligned to 256; we'll use 256 here for a single-pixel copy
   const bytesPerRow = 256;
   encoder.copyTextureToBuffer(
     {
@@ -732,22 +820,17 @@ async function pickObjectAt(px, py) {
 
   device.queue.submit([encoder.finish()]);
 
-  // 4) Lire le pixel (attendre map)
   await readbackBuffer.mapAsync(GPUMapMode.READ);
   const mapped = readbackBuffer.getMappedRange();
-  const data = new Uint8Array(mapped.slice(0, 4)); // first 4 bytes contain pixel channels
+  const data = new Uint8Array(mapped.slice(0, 4));
   readbackBuffer.unmap();
 
-  // 5) Décoder ID en tenant compte du format (BGRA vs RGBA)
   let r = data[0],
     g = data[1],
     b = data[2],
     a = data[3];
 
-  // If canvasFormat is a BGRA format, the byte order is B G R A in the buffer.
-  // The most common returned format is 'bgra8unorm'.
   if (canvasFormat && canvasFormat.toLowerCase().startsWith("bgra")) {
-    // buffer bytes are [B, G, R, A]
     const tmpR = r;
     r = b;
     b = tmpR;
@@ -755,10 +838,12 @@ async function pickObjectAt(px, py) {
 
   const id = r + (g << 8) + (b << 16);
 
-  // 6) Désactiver ID rendering et écrire l'index sélectionné
-  setEditorState(0, id);
+  // ID 200 = axe X, 201 = axe Y, 202 = axe Z
+  if (id >= 200 && id <= 202) {
+    return { type: "gizmo", axis: ["x", "y", "z"][id - 200] };
+  }
 
-  return id;
+  return { type: "object", id: id };
 }
 
 function render() {
@@ -776,8 +861,8 @@ function render() {
   const sceneData = new Float32Array(totalFloats);
 
   sceneData[0] = scene.num_objects;
-  sceneData[1] = -1.0;
-  sceneData[2] = smooth_factor;
+  sceneData[1] = smooth_factor;
+  sceneData[2] = -1.0;
   sceneData[3] = 0.0;
 
   for (let i = 0; i < scene.num_objects; i++) {
@@ -786,7 +871,7 @@ function render() {
 
     // type + padding
     sceneData[base + 0] = obj.type;
-    sceneData[base + 1] = 0.0;
+    sceneData[base + 1] = obj.selected;
     sceneData[base + 2] = 0.0;
     sceneData[base + 3] = 0.0;
 
@@ -864,8 +949,11 @@ function resizeCanvas() {
 
 compileBtn.onclick = () => compileShader(editor.getValue());
 
-function setEditorState(idMode, selectedIndex = 0) {
-  const arr = new Uint32Array([idMode, selectedIndex]);
+function setEditorState(idMode, selectedIndex = -1) {
+  const arr = new Uint32Array([
+    idMode,
+    selectedIndex >= 0 ? selectedIndex : 0xffffffff,
+  ]);
   device.queue.writeBuffer(editorStateBuffer, 0, arr);
 }
 
@@ -956,6 +1044,21 @@ document.addEventListener("keydown", (e) => {
       e.preventDefault();
       toggleFullscreen();
     }
+  }
+});
+
+// Delete object with Delete or Cmd/Ctrl+Backspace
+document.addEventListener("keydown", (e) => {
+  const isDelete =
+    e.key === "Delete" || (e.key === "Backspace" && (e.metaKey || e.ctrlKey));
+  if (isDelete && activeObjectIndex !== null) {
+    scene.objects.splice(activeObjectIndex, 1);
+    scene.num_objects = scene.objects.length;
+    activeObjectIndex = null;
+    scene.selected_object = -1;
+    for (const obj of scene.objects) obj.selected = 0.0;
+    updateObjectCount();
+    updateObjectPanel();
   }
 });
 window.addEventListener("resize", resizeCanvas);

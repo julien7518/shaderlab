@@ -162,6 +162,25 @@ fn sd_cylinder(p: vec3<f32>, r: f32, h: f32) -> f32 {
     return min(max(d.x, d.y), 0.0) + length(max(d, vec2<f32>(0.0)));
 }
 
+// SDF pour une capsule (flèche du gizmo)
+fn sd_capsule(p: vec3<f32>, a: vec3<f32>, b: vec3<f32>, r: f32) -> f32 {
+  let pa = p - a;
+  let ba = b - a;
+  let h = clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0);
+  return length(pa - ba * h) - r;
+}
+
+// SDF pour un cône (pointe de la flèche)
+fn sd_cone_capped(p: vec3<f32>, h: f32, r1: f32, r2: f32) -> f32 {
+  let q = vec2<f32>(length(p.xz), p.y);
+  let k1 = vec2<f32>(r2, h);
+  let k2 = vec2<f32>(r2 - r1, 2.0 * h);
+  let ca = vec2<f32>(q.x - min(q.x, select(r1, r2, q.y < 0.0)), abs(q.y) - h);
+  let cb = q - k1 + k2 * clamp(dot(k1 - q, k2) / dot(k2, k2), 0.0, 1.0);
+  let s = select(1.0, -1.0, cb.x < 0.0 && ca.y < 0.0);
+  return s * sqrt(min(dot(ca, ca), dot(cb, cb)));
+}
+
 // SDF Operations
 fn op_smooth_union(d1: f32, d2: f32, k: f32) -> f32 {
   let h = clamp(0.5 + 0.5 * (d2 - d1) / k, 0.0, 1.0);
@@ -172,10 +191,66 @@ fn op_round(dist: f32, rad: f32) -> f32 {
   return dist - rad;
 }
 
+// Fonction pour dessiner une flèche du gizmo
+fn gizmo_arrow(p: vec3<f32>, axis: vec3<f32>, arrow_len: f32, thickness: f32) -> f32 {
+    // Tige de la flèche : capsule
+    let shaft_length = arrow_len * 0.7;
+    let shaft = sd_capsule(p, vec3<f32>(0.0), axis * shaft_length, thickness);
+
+    // Pointe de la flèche : cône aligné avec l'axe
+    let tip_origin = axis * shaft_length;       // base du cône
+    let tip_dir = axis;                         // direction du cône
+    let tip_height = arrow_len * 0.3;
+    let tip_radius = thickness * 3.0;
+
+    // Transformer p dans le repère du cône
+    let tip_local = p - tip_origin;             // translation
+    let along_axis = dot(tip_local, tip_dir);   // projection sur l'axe
+    let radial = tip_local - tip_dir * along_axis; 
+    let cone_dist = length(radial) - tip_radius * (1.0 - along_axis / tip_height);
+    let cone = max(cone_dist, -along_axis);    // SDF du cône fermé à la base
+
+    return min(shaft, cone);
+}
+
+fn get_gizmo_dist(p: vec3<f32>, gizmo_pos: vec3<f32>) -> vec4<f32> {
+  let local_p = p - gizmo_pos;
+  let gizmo_length = 0.8;
+  let gizmo_thickness = 0.03;
+  
+  // Trois flèches pour X, Y, Z
+  let arrow_x = gizmo_arrow(local_p, vec3<f32>(1.0, 0.0, 0.0), gizmo_length, gizmo_thickness);
+  let arrow_y = gizmo_arrow(local_p, vec3<f32>(0.0, 1.0, 0.0), gizmo_length, gizmo_thickness);
+  let arrow_z = gizmo_arrow(local_p, vec3<f32>(0.0, 0.0, 1.0), gizmo_length, gizmo_thickness);
+  
+  // Trouver la flèche la plus proche
+  var min_dist = arrow_x;
+  var gizmo_id = 200.0; // ID pour axe X
+  var gizmo_color = vec3<f32>(1.0, 0.0, 0.0); // Rouge
+  
+  if (arrow_y < min_dist) {
+    min_dist = arrow_y;
+    gizmo_id = 201.0; // ID pour axe Y
+    gizmo_color = vec3<f32>(0.0, 1.0, 0.0); // Vert
+  }
+  
+  if (arrow_z < min_dist) {
+    min_dist = arrow_z;
+    gizmo_id = 202.0; // ID pour axe Z
+    gizmo_color = vec3<f32>(0.0, 0.0, 1.0); // Bleu
+  }
+  
+  // Retourner (distance, id_ou_color)
+  if (editor.id_mode == 1u) {
+    return vec4<f32>(min_dist, gizmo_id, 0.0, 0.0);
+  } else {
+    return vec4<f32>(min_dist, gizmo_color);
+  }
+}
+
 // Scene description - returns (distance, material_id)
 fn get_dist(p: vec3<f32>) -> vec4<f32> {
   let time = uniforms.time;
-  // Start with a background distance and sky color to avoid invalid color mixing
   var res = vec4<f32>(MAX_DIST, MAT_SKY_COLOR);
   var from_plane = false;
 
@@ -186,7 +261,6 @@ fn get_dist(p: vec3<f32>) -> vec4<f32> {
     let col1 = vec3<f32>(0.9, 0.9, 0.9);
     let col2 = vec3<f32>(0.2, 0.2, 0.2);
     if (editor.id_mode == 1u) {
-      // encode no-object for ground as id = 0 -> color black
       res = vec4<f32>(plane_dist, vec3<f32>(0.0, 0.0, 0.0));
       from_plane = true;
     } else {
@@ -197,14 +271,14 @@ fn get_dist(p: vec3<f32>) -> vec4<f32> {
 
   let count = scene.num_objects;
 
+  // Objets de la scène
   for (var i: u32 = 0u; i < u32(count); i = i + 1u) {
     let obj = scene.objects[i];
     var d = 99999.0;
 
-    // Object position
     let pos = obj.pos.xyz;
     let size = obj.size.xyz;
-    let col  = obj.color.xyz;
+    let col = obj.color.xyz;
 
     if obj.type_obj == 0 {
       d = sd_sphere(p - pos, size.x);
@@ -228,7 +302,6 @@ fn get_dist(p: vec3<f32>) -> vec4<f32> {
     if (from_plane) {
       if (objDist < currentDist) {
         if (editor.id_mode == 1u) {
-          // encode object index (i+1) into the color channels for ID picking
           res = vec4<f32>(objDist, vec3<f32>(f32(i + 1u), 0.0, 0.0));
         } else {
           res = vec4<f32>(objDist, col);
@@ -245,6 +318,18 @@ fn get_dist(p: vec3<f32>) -> vec4<f32> {
           res = vec4<f32>(objDist, col);
         }
       }
+    }
+  }
+
+  // Ajouter le gizmo si un objet est sélectionné
+  // editor.selected_index contient l'index (0-based) ou 0xFFFFFFFF si aucun
+  if (editor.selected_index != 0xFFFFFFFFu && editor.selected_index < u32(count)) {
+    let selected_obj = scene.objects[editor.selected_index];
+    let gizmo_result = get_gizmo_dist(p, selected_obj.pos.xyz);
+    
+    // Le gizmo doit toujours être visible devant les autres objets quand proche
+    if (gizmo_result.x < res.x) {
+      res = gizmo_result;
     }
   }
 
