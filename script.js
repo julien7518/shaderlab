@@ -142,18 +142,21 @@ const scene = {
   objects: [
     {
       type: 0, // Sphere
-      pos: [1.0, 0.0, -1.5],
-      size: [1.0, 0.0, 0.0],
+      selected: 0.0,
+      pos: [0.0, -0.5, 1.5],
+      size: [0.5, 0.0, 0.0],
       color: [1.0, 0.0, 0.0],
     },
     {
       type: 1, // Cube
+      selected: 0.0,
       pos: [-1.0, 0.0, 0.0],
       size: [0.5, 0.5, 0.5],
       color: [0.0, 1.0, 0.0],
     },
     {
       type: 2, // Torus
+      selected: 0.0,
       pos: [1.0, 0.0, 0.0],
       size: [0.5, 0.2, 0.0],
       color: [0.0, 0.0, 1.0],
@@ -201,13 +204,16 @@ canvas.addEventListener("mousedown", async (e) => {
   } else if (pickResult.id > 0) {
     activeObjectIndex = pickResult.id - 1;
     scene.selected_object = activeObjectIndex;
+    scene.objects[activeObjectIndex].selected = 1.0;
     console.log("Selected object:", activeObjectIndex);
   } else {
     activeObjectIndex = null;
     scene.selected_object = -1;
+    for (const obj of scene.objects) {
+      obj.selected = 0.0;
+    }
   }
 
-  // AJOUTER CET APPEL ICI pour mettre à jour le gizmo en mode normal
   setEditorState(
     0,
     activeObjectIndex !== null ? activeObjectIndex : 0xffffffff
@@ -303,10 +309,10 @@ const uniformsStruct = `struct Uniforms {
 };
 
 struct Object3D {
-  type_obj: f32,        // 0: Sphere, 1: Box, 2: Torus, 3: Plane, 4: Cone, 5: Pyramid
+  type_obj: f32,        // 0: Sphere, 1: Box, 2: Torus, 4: Cone, 5: Pyramid, 6: Cylinder
+  selected: f32,
   _padding: f32,
   _padding1: f32,
-  _padding2: f32,
   pos: vec4<f32>,
   size: vec4<f32>,
   color: vec4<f32>
@@ -323,6 +329,8 @@ struct Scene {
 struct EditorState {
   id_mode : u32,
   selected_index : u32,
+  _padding: u32,
+  _padding1: u32,
 };
 
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
@@ -660,7 +668,7 @@ async function initWebGPU() {
   });
 
   editorStateBuffer = device.createBuffer({
-    size: 8,
+    size: 16,
     usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
   });
 
@@ -837,8 +845,8 @@ function render() {
   const sceneData = new Float32Array(totalFloats);
 
   sceneData[0] = scene.num_objects;
-  sceneData[1] = -1.0;
-  sceneData[2] = smooth_factor;
+  sceneData[1] = smooth_factor;
+  sceneData[2] = -1.0;
   sceneData[3] = 0.0;
 
   for (let i = 0; i < scene.num_objects; i++) {
@@ -847,7 +855,7 @@ function render() {
 
     // type + padding
     sceneData[base + 0] = obj.type;
-    sceneData[base + 1] = 0.0;
+    sceneData[base + 1] = obj.selected;
     sceneData[base + 2] = 0.0;
     sceneData[base + 3] = 0.0;
 
