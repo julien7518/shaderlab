@@ -66,6 +66,10 @@ let activeObjectIndex = null;
 let isPanelOpen = true;
 let editorVisible = true;
 let isFullscreen = false;
+let isDraggingGizmo = false;
+let draggedAxis = null; // 'x', 'y', ou 'z'
+let dragStartPos = { x: 0, y: 0 };
+let objectStartPos = { x: 0, y: 0, z: 0 };
 
 const $ = (id) => document.getElementById(id);
 const canvas = $("canvas");
@@ -176,27 +180,86 @@ canvas.addEventListener("mousemove", (e) => {
     (e.clientY - rect.top) * dpr,
   ];
 });
-canvas.addEventListener("mousedown", async (e) => {
-  mouseDown = true;
 
+canvas.addEventListener("mousedown", async (e) => {
   const rect = canvas.getBoundingClientRect();
   const dpr = devicePixelRatio || 1;
   const x = Math.floor((e.clientX - rect.left) * dpr);
   const y = Math.floor((e.clientY - rect.top) * dpr);
 
-  const id = await pickObjectAt(x, y);
+  const pickResult = await pickObjectAt(x, y);
 
-  console.log("Picked ID:", id);
-  if (id > 0) {
-    activeObjectIndex = id - 1;
+  if (pickResult.type === "gizmo") {
+    isDraggingGizmo = true;
+    draggedAxis = pickResult.axis;
+    dragStartPos = { x: e.clientX, y: e.clientY };
+
+    const obj = scene.objects[activeObjectIndex];
+    objectStartPos = { x: obj.pos[0], y: obj.pos[1], z: obj.pos[2] };
+
+    console.log(`Dragging ${draggedAxis} axis`);
+  } else if (pickResult.id > 0) {
+    activeObjectIndex = pickResult.id - 1;
     scene.selected_object = activeObjectIndex;
+    console.log("Selected object:", activeObjectIndex);
   } else {
     activeObjectIndex = null;
     scene.selected_object = -1;
   }
+
+  // AJOUTER CET APPEL ICI pour mettre à jour le gizmo en mode normal
+  setEditorState(
+    0,
+    activeObjectIndex !== null ? activeObjectIndex : 0xffffffff
+  );
+
+  mouseDown = true;
 });
-canvas.addEventListener("mouseup", () => (mouseDown = false));
-canvas.addEventListener("mouseleave", () => (mouseDown = false));
+
+canvas.addEventListener("mousemove", (e) => {
+  const rect = canvas.getBoundingClientRect();
+  const dpr = devicePixelRatio || 1;
+  [mouseX, mouseY] = [
+    (e.clientX - rect.left) * dpr,
+    (e.clientY - rect.top) * dpr,
+  ];
+
+  // Gestion du drag du gizmo
+  if (isDraggingGizmo && activeObjectIndex !== null && draggedAxis) {
+    const deltaX = (e.clientX - dragStartPos.x) * 0.01; // Sensibilité ajustable
+    const deltaY = (e.clientY - dragStartPos.y) * 0.01;
+
+    const obj = scene.objects[activeObjectIndex];
+
+    // Appliquer le mouvement selon l'axe
+    switch (draggedAxis) {
+      case "x":
+        obj.pos[0] = objectStartPos.x + deltaX;
+        break;
+      case "y":
+        obj.pos[1] = objectStartPos.y - deltaY; // Inverser Y car écran
+        break;
+      case "z":
+        obj.pos[2] = objectStartPos.z + deltaY;
+        break;
+    }
+
+    // Mettre à jour le panneau si nécessaire
+    updateObjectPanel();
+  }
+});
+
+canvas.addEventListener("mouseup", () => {
+  mouseDown = false;
+  isDraggingGizmo = false;
+  draggedAxis = null;
+});
+
+canvas.addEventListener("mouseleave", () => {
+  mouseDown = false;
+  isDraggingGizmo = false;
+  draggedAxis = null;
+});
 window.addEventListener(
   "wheel",
   (e) => {
@@ -693,7 +756,10 @@ async function compileShader(fragmentCode) {
 
 async function pickObjectAt(px, py) {
   // 1) Activer ID rendering mode
-  setEditorState(1, 0);
+  setEditorState(
+    1,
+    activeObjectIndex !== null ? activeObjectIndex : 0xffffffff
+  );
 
   const encoder = device.createCommandEncoder();
 
@@ -714,8 +780,6 @@ async function pickObjectAt(px, py) {
   pass.draw(3);
   pass.end();
 
-  // 3) Copier UN pixel dans readbackBuffer
-  // bytesPerRow must be aligned to 256; we'll use 256 here for a single-pixel copy
   const bytesPerRow = 256;
   encoder.copyTextureToBuffer(
     {
@@ -732,22 +796,17 @@ async function pickObjectAt(px, py) {
 
   device.queue.submit([encoder.finish()]);
 
-  // 4) Lire le pixel (attendre map)
   await readbackBuffer.mapAsync(GPUMapMode.READ);
   const mapped = readbackBuffer.getMappedRange();
-  const data = new Uint8Array(mapped.slice(0, 4)); // first 4 bytes contain pixel channels
+  const data = new Uint8Array(mapped.slice(0, 4));
   readbackBuffer.unmap();
 
-  // 5) Décoder ID en tenant compte du format (BGRA vs RGBA)
   let r = data[0],
     g = data[1],
     b = data[2],
     a = data[3];
 
-  // If canvasFormat is a BGRA format, the byte order is B G R A in the buffer.
-  // The most common returned format is 'bgra8unorm'.
   if (canvasFormat && canvasFormat.toLowerCase().startsWith("bgra")) {
-    // buffer bytes are [B, G, R, A]
     const tmpR = r;
     r = b;
     b = tmpR;
@@ -755,10 +814,12 @@ async function pickObjectAt(px, py) {
 
   const id = r + (g << 8) + (b << 16);
 
-  // 6) Désactiver ID rendering et écrire l'index sélectionné
-  setEditorState(0, id);
+  // ID 200 = axe X, 201 = axe Y, 202 = axe Z
+  if (id >= 200 && id <= 202) {
+    return { type: "gizmo", axis: ["x", "y", "z"][id - 200] };
+  }
 
-  return id;
+  return { type: "object", id: id };
 }
 
 function render() {
@@ -864,8 +925,11 @@ function resizeCanvas() {
 
 compileBtn.onclick = () => compileShader(editor.getValue());
 
-function setEditorState(idMode, selectedIndex = 0) {
-  const arr = new Uint32Array([idMode, selectedIndex]);
+function setEditorState(idMode, selectedIndex = -1) {
+  const arr = new Uint32Array([
+    idMode,
+    selectedIndex >= 0 ? selectedIndex : 0xffffffff,
+  ]);
   device.queue.writeBuffer(editorStateBuffer, 0, arr);
 }
 
