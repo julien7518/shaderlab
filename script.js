@@ -40,10 +40,15 @@ const editor = CodeMirror.fromTextArea(document.getElementById("code-editor"), {
 editor.setValue(fallbackShader);
 
 let device;
+let canvasFormat;
+let pickingTexture;
+let readbackBuffer;
+let pickingBindGroup;
 let context;
 let pipeline;
 let uniformBuffer;
 let sceneBuffer;
+let editorStateBuffer;
 let bindGroup;
 let startTime = performance.now();
 let lastFrameTime = startTime;
@@ -57,6 +62,7 @@ let auto_rotate = 0;
 let fog_ratio = 0.02;
 let smooth_factor = 0.3;
 let gamma_correct_ratio = 2.2;
+let activeObjectIndex = null;
 let isPanelOpen = true;
 let editorVisible = true;
 let isFullscreen = false;
@@ -170,7 +176,25 @@ canvas.addEventListener("mousemove", (e) => {
     (e.clientY - rect.top) * dpr,
   ];
 });
-canvas.addEventListener("mousedown", () => (mouseDown = true));
+canvas.addEventListener("mousedown", async (e) => {
+  mouseDown = true;
+
+  const rect = canvas.getBoundingClientRect();
+  const dpr = devicePixelRatio || 1;
+  const x = Math.floor((e.clientX - rect.left) * dpr);
+  const y = Math.floor((e.clientY - rect.top) * dpr);
+
+  const id = await pickObjectAt(x, y);
+
+  console.log("Picked ID:", id);
+  if (id > 0) {
+    activeObjectIndex = id - 1;
+    scene.selected_object = activeObjectIndex;
+  } else {
+    activeObjectIndex = null;
+    scene.selected_object = -1;
+  }
+});
 canvas.addEventListener("mouseup", () => (mouseDown = false));
 canvas.addEventListener("mouseleave", () => (mouseDown = false));
 window.addEventListener(
@@ -227,14 +251,20 @@ struct Object3D {
 
 struct Scene {
   num_objects: f32,
-  selected: f32,
   smooth_k: f32,
   _padding: f32,
+  _padding1: f32,
   objects: array<Object3D>,
 };
 
+struct EditorState {
+  id_mode : u32,
+  selected_index : u32,
+};
+
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
-@group(0) @binding(1) var<storage, read> scene: Scene;`;
+@group(0) @binding(1) var<storage, read> scene: Scene;
+@group(0) @binding(2) var<uniform> editor : EditorState;`;
 
 codeEditorBtn.onclick = () => {
   toggleEditor();
@@ -347,7 +377,7 @@ function updateObjectPanel() {
       container.appendChild(wrap);
     });
     // Taille sliders selon primitive
-    // 0: Sphere (X), 1: Cube (X,Y,Z), 2: Torus (X,Y), 3: Plane (X,Y), 4: Cone (X,Z), 5: Pyramid (X,Y,Z)
+    // 0: Sphere (X), 1: Cube (X,Y,Z), 2: Torus (X,Y), 3: Plane (X,Y), 4: Cone (X,Z), 5: Pyramid (X,Y,Z), 6: Cylinder (X,Y)
     let sizeAxes = [];
     switch (obj.type) {
       case 0: // Sphere
@@ -358,6 +388,7 @@ function updateObjectPanel() {
         break;
       case 2: // Torus
       case 3: // Plane
+      case 6:
         sizeAxes = ["x", "y"];
         break;
       default:
@@ -549,10 +580,10 @@ async function initWebGPU() {
   device = await adapter.requestDevice();
   context = canvas.getContext("webgpu");
 
-  const format = navigator.gpu.getPreferredCanvasFormat();
+  canvasFormat = navigator.gpu.getPreferredCanvasFormat();
   context.configure({
     device,
-    format,
+    format: canvasFormat,
   });
 
   uniformBuffer = device.createBuffer({
@@ -563,6 +594,27 @@ async function initWebGPU() {
   sceneBuffer = device.createBuffer({
     size: 16 + 128 * 64,
     usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+  });
+
+  editorStateBuffer = device.createBuffer({
+    size: 8,
+    usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+  });
+
+  // pickingTexture uses the same format as the canvas pipeline
+  pickingTexture = device.createTexture({
+    size: [canvas.width, canvas.height, 1],
+    format: canvasFormat, // IMPORTANT : match swap chain format
+    usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_SRC,
+  });
+
+  // Readback buffer: bytesPerRow must be multiple of 256 when copying
+  // We'll allocate a buffer large enough for 1 row of pixels (width = canvas.width).
+  // bytesPerRow must be aligned to 256.
+  const alignedBytesPerRow = 256; // minimal aligned stride for 1-pixel copy
+  readbackBuffer = device.createBuffer({
+    size: alignedBytesPerRow * 1, // reading 1 row of 1 pixel
+    usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
   });
 
   await compileShader(fallbackShader);
@@ -605,6 +657,11 @@ async function compileShader(fragmentCode) {
           visibility: GPUShaderStage.FRAGMENT,
           buffer: { type: "read-only-storage" },
         },
+        {
+          binding: 2,
+          visibility: GPUShaderStage.FRAGMENT,
+          buffer: { type: "uniform" },
+        },
       ],
     });
     pipeline = device.createRenderPipeline({
@@ -624,6 +681,7 @@ async function compileShader(fragmentCode) {
       entries: [
         { binding: 0, resource: { buffer: uniformBuffer } },
         { binding: 1, resource: { buffer: sceneBuffer } },
+        { binding: 2, resource: { buffer: editorStateBuffer } },
       ],
     });
     $("compile-time").textContent = `${(performance.now() - start).toFixed(2)}ms`; // prettier-ignore
@@ -631,6 +689,76 @@ async function compileShader(fragmentCode) {
     errorMsg.textContent = "Compile error: " + e.message;
     errorMsg.classList.remove("hidden");
   }
+}
+
+async function pickObjectAt(px, py) {
+  // 1) Activer ID rendering mode
+  setEditorState(1, 0);
+
+  const encoder = device.createCommandEncoder();
+
+  // 2) Render pass vers pickingTexture
+  const pass = encoder.beginRenderPass({
+    colorAttachments: [
+      {
+        view: pickingTexture.createView(),
+        loadOp: "clear",
+        clearValue: { r: 0, g: 0, b: 0, a: 1 },
+        storeOp: "store",
+      },
+    ],
+  });
+
+  pass.setPipeline(pipeline);
+  pass.setBindGroup(0, bindGroup);
+  pass.draw(3);
+  pass.end();
+
+  // 3) Copier UN pixel dans readbackBuffer
+  // bytesPerRow must be aligned to 256; we'll use 256 here for a single-pixel copy
+  const bytesPerRow = 256;
+  encoder.copyTextureToBuffer(
+    {
+      texture: pickingTexture,
+      origin: { x: px, y: py, z: 0 },
+    },
+    {
+      buffer: readbackBuffer,
+      bytesPerRow: bytesPerRow,
+      rowsPerImage: 1,
+    },
+    { width: 1, height: 1, depthOrArrayLayers: 1 }
+  );
+
+  device.queue.submit([encoder.finish()]);
+
+  // 4) Lire le pixel (attendre map)
+  await readbackBuffer.mapAsync(GPUMapMode.READ);
+  const mapped = readbackBuffer.getMappedRange();
+  const data = new Uint8Array(mapped.slice(0, 4)); // first 4 bytes contain pixel channels
+  readbackBuffer.unmap();
+
+  // 5) Décoder ID en tenant compte du format (BGRA vs RGBA)
+  let r = data[0],
+    g = data[1],
+    b = data[2],
+    a = data[3];
+
+  // If canvasFormat is a BGRA format, the byte order is B G R A in the buffer.
+  // The most common returned format is 'bgra8unorm'.
+  if (canvasFormat && canvasFormat.toLowerCase().startsWith("bgra")) {
+    // buffer bytes are [B, G, R, A]
+    const tmpR = r;
+    r = b;
+    b = tmpR;
+  }
+
+  const id = r + (g << 8) + (b << 16);
+
+  // 6) Désactiver ID rendering et écrire l'index sélectionné
+  setEditorState(0, id);
+
+  return id;
 }
 
 function render() {
@@ -735,6 +863,11 @@ function resizeCanvas() {
 }
 
 compileBtn.onclick = () => compileShader(editor.getValue());
+
+function setEditorState(idMode, selectedIndex = 0) {
+  const arr = new Uint32Array([idMode, selectedIndex]);
+  device.queue.writeBuffer(editorStateBuffer, 0, arr);
+}
 
 function toggleEditor() {
   editorVisible = !editorVisible;

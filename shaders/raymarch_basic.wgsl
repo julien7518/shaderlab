@@ -1,4 +1,3 @@
-// Basic Ray Marching with Simple Primitives
 @fragment
 fn fs_main(@builtin(position) fragCoord: vec4<f32>) -> @location(0) vec4<f32> {
   let uv = (fragCoord.xy - uniforms.resolution * 0.5) / min(uniforms.resolution.x, uniforms.resolution.y);
@@ -24,6 +23,18 @@ fn fs_main(@builtin(position) fragCoord: vec4<f32>) -> @location(0) vec4<f32> {
 
   // Ray march
   let result = ray_march(cam_pos, rd);
+
+  // If we are in ID rendering mode, return the encoded object id color immediately
+  if (editor.id_mode == 1u) {
+    // ray_march returns (distance, color.xyz). In ID mode we store object index in color.x
+    let idFloat = result.y; // encoded object index as float (1 = first object)
+    // If nothing hit, idFloat will be <= 0.0 -> return transparent/black
+    if (idFloat <= 0.0) {
+      return vec4<f32>(0.0, 0.0, 0.0, 1.0);
+    }
+    let idColor = idToColor(idFloat);
+    return vec4<f32>(idColor, 1.0);
+  }
 
   if result.x < MAX_DIST {
     // Hit something - calculate lighting
@@ -55,6 +66,14 @@ fn fs_main(@builtin(position) fragCoord: vec4<f32>) -> @location(0) vec4<f32> {
   // Sky gradient
   let sky = mix(MAT_SKY_COLOR, MAT_SKY_COLOR * 0.9, uv.y * 0.5 + 0.5);
   return vec4<f32>(gamma_correct(sky), 1.0);
+}
+
+fn idToColor(idf: f32) -> vec3<f32> {
+    let id = i32(idf);
+    let r = f32(id & 255) / 255.0;
+    let g = f32((id >> 8) & 255) / 255.0;
+    let b = f32((id >> 16) & 255) / 255.0;
+    return vec3<f32>(r, g, b);
 }
 
 // Gamma Correction
@@ -138,6 +157,11 @@ fn sd_pyramid(p: vec3<f32>, h: f32) -> f32 {
   return sqrt((d2 + q.z*q.z) / m2) * sign(max(q.z, -p.y));
 }
 
+fn sd_cylinder(p: vec3<f32>, r: f32, h: f32) -> f32 {
+    let d: vec2<f32> = abs(vec2<f32>(length(p.xz), p.y)) - vec2<f32>(r, h);
+    return min(max(d.x, d.y), 0.0) + length(max(d, vec2<f32>(0.0)));
+}
+
 // SDF Operations
 fn op_smooth_union(d1: f32, d2: f32, k: f32) -> f32 {
   let h = clamp(0.5 + 0.5 * (d2 - d1) / k, 0.0, 1.0);
@@ -151,7 +175,8 @@ fn op_round(dist: f32, rad: f32) -> f32 {
 // Scene description - returns (distance, material_id)
 fn get_dist(p: vec3<f32>) -> vec4<f32> {
   let time = uniforms.time;
-  var res = vec4<f32>(MAX_DIST, vec3<f32>(-1.0, -1.0, -1.0));
+  // Start with a background distance and sky color to avoid invalid color mixing
+  var res = vec4<f32>(MAX_DIST, MAT_SKY_COLOR);
   var from_plane = false;
 
   // Ground plane
@@ -160,8 +185,14 @@ fn get_dist(p: vec3<f32>) -> vec4<f32> {
     let checker = floor(p.x) + floor(p.z);
     let col1 = vec3<f32>(0.9, 0.9, 0.9);
     let col2 = vec3<f32>(0.2, 0.2, 0.2);
-    res = vec4<f32>(plane_dist, select(col2, col1, i32(checker) % 2 == 0));
-    from_plane = true;
+    if (editor.id_mode == 1u) {
+      // encode no-object for ground as id = 0 -> color black
+      res = vec4<f32>(plane_dist, vec3<f32>(0.0, 0.0, 0.0));
+      from_plane = true;
+    } else {
+      res = vec4<f32>(plane_dist, select(col2, col1, i32(checker) % 2 == 0));
+      from_plane = true;
+    }
   }
 
   let count = scene.num_objects;
@@ -187,6 +218,8 @@ fn get_dist(p: vec3<f32>) -> vec4<f32> {
       d = sd_cone(p - pos, vec2<f32>(size.x, size.y), size.z);
     } else if obj.type_obj == 5 {
       d = sd_pyramid(p - pos, size.y);
+    } else if obj.type_obj == 6 {
+      d = sd_cylinder(p - pos, size.x, size.y);
     }
     
     let currentDist = res.x;
@@ -194,14 +227,24 @@ fn get_dist(p: vec3<f32>) -> vec4<f32> {
 
     if (from_plane) {
       if (objDist < currentDist) {
-        res = vec4<f32>(objDist, col);
+        if (editor.id_mode == 1u) {
+          // encode object index (i+1) into the color channels for ID picking
+          res = vec4<f32>(objDist, vec3<f32>(f32(i + 1u), 0.0, 0.0));
+        } else {
+          res = vec4<f32>(objDist, col);
+        }
         from_plane = false;
       }
     } else {
-      let smoothDist = op_smooth_union(currentDist, objDist, scene.smooth_k);
-      let h = clamp(0.5 + 0.5 * (objDist - currentDist) / scene.smooth_k, 0.0, 1.0);
-      let blendedColor = mix(col, res.yzw, h);
-      res = vec4<f32>(smoothDist, blendedColor);
+      if (editor.id_mode == 1u) {
+        if (objDist < res.x) {
+          res = vec4<f32>(objDist, vec3<f32>(f32(i + 1u), 0.0, 0.0));
+        }
+      } else {
+        if (objDist < res.x) {
+          res = vec4<f32>(objDist, col);
+        }
+      }
     }
   }
 
