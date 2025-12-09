@@ -204,14 +204,22 @@ canvas.addEventListener("mousedown", async (e) => {
   } else if (pickResult.id > 0) {
     activeObjectIndex = pickResult.id - 1;
     scene.selected_object = activeObjectIndex;
+
+    // Reset all selections
+    for (const obj of scene.objects) obj.selected = 0.0;
+
     scene.objects[activeObjectIndex].selected = 1.0;
     console.log("Selected object:", activeObjectIndex);
+
+    // Update panel immediately so the orange border appears
+    updateObjectPanel();
   } else {
     activeObjectIndex = null;
     scene.selected_object = -1;
     for (const obj of scene.objects) {
       obj.selected = 0.0;
     }
+    updateObjectPanel();
   }
 
   setEditorState(
@@ -401,6 +409,14 @@ function updateObjectPanel() {
   scene.objects.forEach((obj, idx) => {
     const container = document.createElement("div");
     container.className = "object-controls";
+    // Highlight border if selected
+    if (idx === activeObjectIndex) {
+      container.style.border = "1px solid #ffaa00";
+      container.style.padding = "4px";
+    } else {
+      container.style.border = "none";
+      container.style.padding = "";
+    }
     // Titre
     const title = document.createElement("div");
     title.textContent =
@@ -1028,6 +1044,21 @@ document.addEventListener("keydown", (e) => {
       e.preventDefault();
       toggleFullscreen();
     }
+  }
+});
+
+// Delete object with Delete or Cmd/Ctrl+Backspace
+document.addEventListener("keydown", (e) => {
+  const isDelete =
+    e.key === "Delete" || (e.key === "Backspace" && (e.metaKey || e.ctrlKey));
+  if (isDelete && activeObjectIndex !== null) {
+    scene.objects.splice(activeObjectIndex, 1);
+    scene.num_objects = scene.objects.length;
+    activeObjectIndex = null;
+    scene.selected_object = -1;
+    for (const obj of scene.objects) obj.selected = 0.0;
+    updateObjectCount();
+    updateObjectPanel();
   }
 });
 window.addEventListener("resize", resizeCanvas);
